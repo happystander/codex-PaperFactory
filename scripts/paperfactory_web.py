@@ -47,6 +47,28 @@ JOB_FILE = "web_job.json"
 HUMAN_INTERVENTIONS = "human_interventions.md"
 MEMORY_CONFIG = "memory_config.json"
 PROGRESS_FEED = "progress/feed.jsonl"
+MEMORY_PROFILES: dict[str, dict[str, Any]] = {
+    "focused": {
+        "label": "轻量记忆",
+        "description": "适合快速迭代：只带研究摘要和人工介入，减少旧信息干扰。",
+        "config": {"summary": True, "logs": False, "human_interventions": True, "artifact_index": False},
+    },
+    "balanced": {
+        "label": "标准记忆",
+        "description": "推荐：带研究摘要、人工介入和当前阶段产物，让 Codex 保持上下文但不过载。",
+        "config": {"summary": True, "logs": False, "human_interventions": True, "artifact_index": True},
+    },
+    "deep": {
+        "label": "深度记忆",
+        "description": "适合排错或长链路恢复：带摘要、运行记录、人工介入和当前产物。",
+        "config": {"summary": True, "logs": True, "human_interventions": True, "artifact_index": True},
+    },
+    "clean": {
+        "label": "干净启动",
+        "description": "只保留任务本身和人工介入，适合想让 Codex 少受历史影响时使用。",
+        "config": {"summary": False, "logs": False, "human_interventions": True, "artifact_index": False},
+    },
+}
 
 
 def now() -> str:
@@ -533,16 +555,20 @@ def memory_config_path(root: Path) -> Path:
     return root / MEMORY_CONFIG
 
 
-def default_memory_config() -> dict[str, bool]:
-    return {
-        "summary": True,
-        "logs": True,
-        "human_interventions": True,
-        "artifact_index": True,
-    }
+def default_memory_config() -> dict[str, Any]:
+    config = dict(MEMORY_PROFILES["balanced"]["config"])
+    config["profile"] = "balanced"
+    return config
 
 
-def read_memory_config(root: Path) -> dict[str, bool]:
+def memory_profile_for(config: dict[str, Any]) -> str:
+    for name, profile in MEMORY_PROFILES.items():
+        if all(bool(config.get(key)) == bool(value) for key, value in profile["config"].items()):
+            return name
+    return "custom"
+
+
+def read_memory_config(root: Path) -> dict[str, Any]:
     config = default_memory_config()
     path = memory_config_path(root)
     if path.exists():
@@ -551,20 +577,45 @@ def read_memory_config(root: Path) -> dict[str, bool]:
         except json.JSONDecodeError:
             raw = {}
         if isinstance(raw, dict):
-            for key in config:
+            for key in ("summary", "logs", "human_interventions", "artifact_index"):
                 if key in raw:
                     config[key] = bool(raw[key])
+            if str(raw.get("profile") or "") in MEMORY_PROFILES:
+                config["profile"] = str(raw["profile"])
+    profile_name = memory_profile_for(config)
+    if profile_name == "custom":
+        config["profile"] = "custom"
+        config["label"] = "自定义记忆"
+        config["description"] = "你手动选择了记忆来源。"
+    else:
+        config["profile"] = profile_name
+        config["label"] = str(MEMORY_PROFILES[profile_name]["label"])
+        config["description"] = str(MEMORY_PROFILES[profile_name]["description"])
+    config["profiles"] = {
+        key: {"label": value["label"], "description": value["description"]}
+        for key, value in MEMORY_PROFILES.items()
+    }
     return config
 
 
-def write_memory_config(root: Path, config: dict[str, Any]) -> dict[str, bool]:
+def write_memory_config(root: Path, config: dict[str, Any]) -> dict[str, Any]:
     current = read_memory_config(root)
-    for key in current:
+    profile = str(config.get("profile") or "")
+    if profile in MEMORY_PROFILES:
+        for key, value in MEMORY_PROFILES[profile]["config"].items():
+            current[key] = bool(value)
+        current["profile"] = profile
+    for key in ("summary", "logs", "human_interventions", "artifact_index"):
         if key in config:
             current[key] = bool(config[key])
-    memory_config_path(root).write_text(json.dumps(current, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    persist = {
+        key: current[key]
+        for key in ("profile", "summary", "logs", "human_interventions", "artifact_index")
+        if key in current
+    }
+    memory_config_path(root).write_text(json.dumps(persist, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     researchctl.append_log(root, "Web UI memory config updated")
-    return current
+    return read_memory_config(root)
 
 
 def stream_messages(root: Path, limit: int = 120) -> list[dict[str, str]]:
@@ -584,27 +635,104 @@ def stream_messages(root: Path, limit: int = 120) -> list[dict[str, str]]:
     ]
 
 
+def phase_by_key(root: Path, key: str) -> researchctl.Phase | None:
+    for phase in researchctl.configured_phases(root):
+        if phase.key == key:
+            return phase
+    return researchctl.PHASE_BY_KEY.get(key)
+
+
+def phase_required(root: Path, phase: researchctl.Phase) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for rel in phase.required:
+        path = root / rel
+        present = path.exists() and path.stat().st_size > 0
+        rows.append(
+            {
+                "path": rel,
+                "present": present,
+                "size": path.stat().st_size if path.exists() else 0,
+                "url": f"/files/{urllib.parse.quote(rel)}" if path.exists() else None,
+            }
+        )
+    return rows
+
+
+def phase_health(root: Path, phase: researchctl.Phase, *, status: str, active: bool, completed: bool) -> dict[str, Any]:
+    required = phase_required(root, phase)
+    present = sum(1 for item in required if item["present"])
+    total = len(required)
+    report_status = researchctl.report_status(root, phase)
+    missing = [str(item["path"]) for item in required if not item["present"]]
+    if completed or (report_status or "").lower() in researchctl.COMPLETE_STATUSES:
+        label = "已完成"
+        tone = "complete"
+    elif report_status and report_status.lower() in researchctl.NON_ADVANCING_STATUSES:
+        label = "需要处理"
+        tone = "stopped"
+    elif missing and present:
+        label = f"进行中 {present}/{total}"
+        tone = "current" if active else "pending"
+    elif missing:
+        label = "未开始" if not active else "等待产物"
+        tone = "pending" if not active else "waiting"
+    elif report_status:
+        label = f"报告：{report_status}"
+        tone = "current" if active else "pending"
+    else:
+        label = "待总结"
+        tone = "waiting"
+    return {
+        "status": status,
+        "status_text": label,
+        "status_tone": tone,
+        "report_status": report_status or "missing",
+        "missing": missing,
+        "present_count": present,
+        "required_count": total,
+        "required": required,
+    }
+
+
 def phase_payload(root: Path) -> dict[str, Any]:
     state = researchctl.load_state(root)
-    phase = researchctl.current_phase(state)
+    phase = researchctl.current_phase(state, root)
     phase_key = "complete" if phase is None else phase.key
-    done, total = progress(phase_key)
+    done, total = progress(root, phase_key)
     history = {item.get("phase") for item in state.get("phase_history", [])}
     phases = []
-    for index, item in enumerate(researchctl.PHASES, 1):
-        if phase_key == "complete" or item.key in history:
+    workflow_rows = researchctl.workflow_config_for_ui(root)
+    visible_index = 0
+    for item in workflow_rows:
+        key = str(item["key"])
+        enabled = bool(item.get("enabled", True))
+        if enabled:
+            visible_index += 1
+        if phase_key == "complete" or key in history:
             status = "complete"
-        elif item.key == phase_key:
+        elif key == phase_key:
             status = "current"
+        elif not enabled:
+            status = "disabled"
         else:
             status = "pending"
+        phase_obj = phase_by_key(root, key)
+        health = (
+            phase_health(root, phase_obj, status=status, active=key == phase_key, completed=key in history)
+            if phase_obj
+            else {"status_text": "不可用", "status_tone": "stopped", "report_status": "missing", "missing": [], "present_count": 0, "required_count": 0}
+        )
         phases.append(
             {
-                "index": index,
-                "key": item.key,
-                "title": item.title,
-                "objective": item.objective,
+                "index": visible_index if enabled else "-",
+                "key": key,
+                "title": str(item.get("title") or ""),
+                "objective": str(item.get("objective") or ""),
+                "gate": str(item.get("gate") or ""),
+                "enabled": enabled,
                 "status": status,
+                "page_url": f"/phase?key={urllib.parse.quote(key)}",
+                **health,
             }
         )
 
@@ -620,16 +748,12 @@ def phase_payload(root: Path) -> dict[str, Any]:
         gate = phase.gate
         title = phase.title
         objective = phase.objective
-        for rel in phase.required:
-            path = root / rel
-            required.append(
-                {
-                    "path": rel,
-                    "present": path.exists() and path.stat().st_size > 0,
-                    "size": path.stat().st_size if path.exists() else 0,
-                    "url": f"/files/{urllib.parse.quote(rel)}" if path.exists() else None,
-                }
-            )
+        required = phase_required(root, phase)
+    health = (
+        phase_health(root, phase, status="current", active=True, completed=False)
+        if phase is not None
+        else {"status_text": "全部完成", "status_tone": "complete", "present_count": 0, "required_count": 0}
+    )
 
     return {
         "research_dir": str(root),
@@ -641,8 +765,13 @@ def phase_payload(root: Path) -> dict[str, Any]:
             "objective": objective,
             "gate": gate,
             "report_status": report_status,
+            "display_status": health["status_text"],
+            "status_tone": health["status_tone"],
+            "present_count": health["present_count"],
+            "required_count": health["required_count"],
             "missing": missing,
             "required": required,
+            "page_url": f"/phase?key={urllib.parse.quote(phase_key)}",
         },
         "progress": {"current": done, "total": total},
         "phases": phases,
@@ -650,11 +779,12 @@ def phase_payload(root: Path) -> dict[str, Any]:
     }
 
 
-def progress(phase_key: str) -> tuple[int, int]:
-    total = len(researchctl.PHASES)
+def progress(root: Path, phase_key: str) -> tuple[int, int]:
+    phases = researchctl.configured_phases(root)
+    total = len(phases)
     if phase_key == "complete":
         return total, total
-    for index, phase in enumerate(researchctl.PHASES, 1):
+    for index, phase in enumerate(phases, 1):
         if phase.key == phase_key:
             return index, total
     return 0, total
@@ -1152,6 +1282,115 @@ def html_escape(text: str) -> str:
         .replace('"', "&quot;")
         .replace("'", "&#39;")
     )
+
+
+def simple_markdown_html(text: str) -> str:
+    parts: list[str] = []
+    in_code = False
+    code_lines: list[str] = []
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if line.strip().startswith("```"):
+            if in_code:
+                parts.append(f"<pre>{html_escape(chr(10).join(code_lines))}</pre>")
+                code_lines = []
+                in_code = False
+            else:
+                in_code = True
+            continue
+        if in_code:
+            code_lines.append(line)
+            continue
+        stripped = line.strip()
+        if not stripped:
+            parts.append("<div class=\"gap\"></div>")
+        elif stripped.startswith("### "):
+            parts.append(f"<h3>{html_escape(stripped[4:])}</h3>")
+        elif stripped.startswith("## "):
+            parts.append(f"<h2>{html_escape(stripped[3:])}</h2>")
+        elif stripped.startswith("# "):
+            parts.append(f"<h1>{html_escape(stripped[2:])}</h1>")
+        elif stripped.startswith(("- ", "* ")):
+            parts.append(f"<p class=\"bullet\">{html_escape(stripped[2:])}</p>")
+        else:
+            parts.append(f"<p>{html_escape(stripped)}</p>")
+    if in_code:
+        parts.append(f"<pre>{html_escape(chr(10).join(code_lines))}</pre>")
+    return "\n".join(parts)
+
+
+def phase_page_text(root: Path, key: str) -> tuple[str, str]:
+    phase = phase_by_key(root, key)
+    if phase is None:
+        raise FileNotFoundError(key)
+    page_path = root / "pages" / f"{key}.md"
+    if page_path.exists():
+        return phase.title, page_path.read_text(encoding="utf-8", errors="replace")
+    health = phase_health(root, phase, status="current", active=False, completed=False)
+    report = researchctl.report_for(root, phase)
+    events = [
+        event
+        for event in read_progress_feed(root, 240)
+        if str(event.get("phase") or "") == key
+    ][-12:]
+    lines = [
+        f"# {phase.title}",
+        "",
+        f"阶段状态：{health['status_text']}",
+        "",
+        f"目标：{phase.objective}",
+        "",
+        f"门禁：{phase.gate}",
+        "",
+        "## 必需产物",
+    ]
+    for item in health["required"]:
+        mark = "已生成" if item["present"] else "未生成"
+        lines.append(f"- {mark}: {item['path']}")
+    if report:
+        lines.extend(["", "## 阶段报告", "```json", json.dumps(report, indent=2, ensure_ascii=False), "```"])
+    if events:
+        lines.extend(["", "## 最近进展"])
+        for event in events:
+            msg = str(event.get("message") or "").strip()
+            if msg:
+                lines.append(f"- {msg}")
+    if not page_path.exists():
+        lines.extend(["", "## 提示", f"- Codex 下一轮应维护 pages/{key}.md，让这里变成自然语言阶段展示页。"])
+    return phase.title, "\n".join(lines)
+
+
+def phase_page_html(root: Path, key: str) -> bytes:
+    title, text = phase_page_text(root, key)
+    body = simple_markdown_html(text)
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html_escape(title)}</title>
+  <style>
+    body {{ margin:0; background:#f6f8fb; color:#172033; font-family:Inter,system-ui,sans-serif; line-height:1.65; }}
+    header {{ min-height:58px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 22px; background:#fff; border-bottom:1px solid #d8e0ed; position:sticky; top:0; }}
+    main {{ max-width:980px; margin:0 auto; padding:24px; }}
+    article {{ background:#fff; border:1px solid #d8e0ed; border-radius:12px; padding:24px; box-shadow:0 16px 38px rgba(15,23,42,.07); }}
+    h1 {{ margin:0 0 16px; font-size:28px; letter-spacing:0; }}
+    h2 {{ margin:24px 0 10px; font-size:18px; letter-spacing:0; }}
+    h3 {{ margin:18px 0 8px; font-size:15px; letter-spacing:0; }}
+    p {{ margin:8px 0; }}
+    .bullet {{ padding-left:18px; position:relative; }}
+    .bullet::before {{ content:""; width:5px; height:5px; border-radius:99px; background:#2563eb; position:absolute; left:4px; top:.8em; }}
+    .gap {{ height:8px; }}
+    pre {{ white-space:pre-wrap; overflow-wrap:anywhere; background:#111827; color:#f9fafb; border-radius:10px; padding:14px; }}
+    a {{ color:#2563eb; text-decoration:none; }}
+  </style>
+</head>
+<body>
+  <header><strong>{html_escape(title)}</strong><a href="/">返回控制台</a></header>
+  <main><article>{body}</article></main>
+</body>
+</html>
+""".encode("utf-8")
 
 
 def index_html() -> bytes:
@@ -2209,6 +2448,8 @@ def index_html_cn_v2() -> bytes:
   <script>
     const $ = (id) => document.getElementById(id);
     const roleName = {agent: 'Codex', human: '你', system: '系统'};
+    let workflowDirty = false;
+    let draggedWorkflowKey = null;
 
     async function api(path, options = {}) {
       const res = await fetch(path, {headers: {'content-type': 'application/json'}, ...options});
@@ -2413,10 +2654,18 @@ def index_html_cn_v3() -> bytes:
     .metric { padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.72); min-height: 72px; }
     .label { font-size: 12px; color: var(--muted); }
     .value { font-size: 17px; font-weight: 760; margin-top: 5px; overflow-wrap: anywhere; }
-    .flow { display: grid; grid-template-columns: repeat(10, minmax(88px,1fr)); gap: 7px; overflow-x: auto; }
-    .phase { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: #fff; font-size: 12px; min-height: 62px; }
+    .flow { display: grid; grid-template-columns: repeat(10, minmax(98px,1fr)); gap: 7px; overflow-x: auto; }
+    .phase { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: #fff; font-size: 12px; min-height: 74px; text-align:left; font-weight:600; }
     .phase.current { border-color: var(--blue); background: var(--soft-blue); }
     .phase.complete { border-color: #bce4d2; background: #effaf5; }
+    .phase.disabled { opacity:.48; background:#f8fafc; }
+    .phase .phaseMeta { display:block; margin-top:5px; color:var(--muted); font-weight:600; }
+    .workflowEditor { display:grid; gap:8px; margin-top:12px; }
+    .workflowRow { display:grid; grid-template-columns: 28px 64px minmax(150px,1fr) 92px; gap:8px; align-items:center; padding:8px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+    .workflowRow.dragging { opacity:.45; }
+    .workflowRow input[type="text"] { min-height:32px; }
+    .dragHandle { cursor:grab; color:var(--muted); text-align:center; font-weight:900; }
+    .tiny { font-size:12px; color:var(--muted); }
     .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .row > input { flex: 1 1 180px; width: auto; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
@@ -2436,6 +2685,8 @@ def index_html_cn_v3() -> bytes:
     .composer { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 9px; margin-top: 10px; align-items: end; }
     .memory label { display: flex; gap: 7px; align-items: center; color: var(--text); font-size: 13px; }
     .memory input { width: auto; min-height: auto; }
+    details { margin-top:10px; }
+    summary { cursor:pointer; color:var(--muted); font-size:13px; }
     .quota { display: grid; gap: 9px; }
     .quotaHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .quotaValue { font-weight: 820; }
@@ -2494,10 +2745,21 @@ def index_html_cn_v3() -> bytes:
       </section>
       <section class="memory">
         <h2>记忆</h2>
-        <label><input type="checkbox" id="memSummary"> 摘要</label>
-        <label><input type="checkbox" id="memLogs"> 日志</label>
-        <label><input type="checkbox" id="memHuman"> 人工介入</label>
-        <label><input type="checkbox" id="memArtifacts"> 当前产物</label>
+        <select id="memoryProfile">
+          <option value="balanced">标准记忆</option>
+          <option value="focused">轻量记忆</option>
+          <option value="deep">深度记忆</option>
+          <option value="clean">干净启动</option>
+          <option value="custom">自定义</option>
+        </select>
+        <p class="tiny" id="memoryProfileText" style="margin-top:7px"></p>
+        <details>
+          <summary>高级来源</summary>
+          <label><input type="checkbox" id="memSummary"> 研究摘要</label>
+          <label><input type="checkbox" id="memLogs"> 运行记录</label>
+          <label><input type="checkbox" id="memHuman"> 人工介入</label>
+          <label><input type="checkbox" id="memArtifacts"> 当前阶段产物</label>
+        </details>
         <button id="saveMemoryBtn" style="margin-top:10px">保存</button>
       </section>
       <section>
@@ -2544,8 +2806,16 @@ def index_html_cn_v3() -> bytes:
         </div>
       </div>
       <section>
-        <h2>流程</h2>
+        <div class="row" style="justify-content:space-between">
+          <h2>流程</h2>
+          <div class="row">
+            <button id="resetWorkflowBtn">默认</button>
+            <button class="primary" id="saveWorkflowBtn">保存流程</button>
+          </div>
+        </div>
+        <p class="muted" style="margin-bottom:10px">点击阶段打开展示页；在下方拖动排序、启停阶段、改显示名称。</p>
         <div class="flow" id="phaseFlow"></div>
+        <div class="workflowEditor" id="workflowEditor"></div>
       </section>
       <section>
         <h2>Codex 现在在做什么</h2>
@@ -2614,10 +2884,62 @@ def index_html_cn_v3() -> bytes:
       if (health === 'stopped' || health === 'error') return 'stopped';
       return '';
     }
+    function applyMemoryProfile(profile) {
+      const presets = {
+        focused: {summary:true, logs:false, human_interventions:true, artifact_index:false},
+        balanced: {summary:true, logs:false, human_interventions:true, artifact_index:true},
+        deep: {summary:true, logs:true, human_interventions:true, artifact_index:true},
+        clean: {summary:false, logs:false, human_interventions:true, artifact_index:false}
+      };
+      const preset = presets[profile];
+      if (!preset) return;
+      $('memSummary').checked = preset.summary;
+      $('memLogs').checked = preset.logs;
+      $('memHuman').checked = preset.human_interventions;
+      $('memArtifacts').checked = preset.artifact_index;
+    }
+    function workflowRowsFromDom() {
+      return Array.from(document.querySelectorAll('.workflowRow')).map(row => ({
+        key: row.dataset.key,
+        enabled: row.querySelector('[data-field="enabled"]').checked,
+        title: row.querySelector('[data-field="title"]').value.trim(),
+        objective: row.dataset.objective || '',
+        gate: row.dataset.gate || ''
+      }));
+    }
+    function renderWorkflowEditor(phases) {
+      if (workflowDirty) return;
+      $('workflowEditor').innerHTML = phases.map(p => `
+        <div class="workflowRow" draggable="true" data-key="${esc(p.key)}" data-objective="${esc(p.objective || '')}" data-gate="${esc(p.gate || '')}">
+          <span class="dragHandle">☰</span>
+          <label><input type="checkbox" data-field="enabled" ${p.enabled ? 'checked' : ''}> 启用</label>
+          <input data-field="title" type="text" value="${esc(p.title)}" aria-label="阶段名称">
+          <button data-open="${esc(p.page_url)}">展示页</button>
+        </div>
+      `).join('');
+      document.querySelectorAll('.workflowRow').forEach(row => {
+        row.addEventListener('dragstart', () => { draggedWorkflowKey = row.dataset.key; row.classList.add('dragging'); });
+        row.addEventListener('dragend', () => row.classList.remove('dragging'));
+        row.addEventListener('dragover', event => event.preventDefault());
+        row.addEventListener('drop', event => {
+          event.preventDefault();
+          const dragged = document.querySelector(`.workflowRow[data-key="${CSS.escape(draggedWorkflowKey || '')}"]`);
+          if (dragged && dragged !== row) {
+            $('workflowEditor').insertBefore(dragged, row);
+            workflowDirty = true;
+          }
+        });
+        row.querySelectorAll('input').forEach(input => input.addEventListener('input', () => { workflowDirty = true; }));
+        row.querySelector('[data-open]').addEventListener('click', event => {
+          event.preventDefault();
+          window.open(event.currentTarget.dataset.open, '_blank');
+        });
+      });
+    }
     function renderStatus(data) {
       $('researchDir').textContent = data.research_dir;
       $('phaseKey').textContent = `${data.phase.key} · ${data.phase.title}`;
-      $('reportStatus').textContent = data.phase.report_status;
+      $('reportStatus').textContent = data.phase.display_status || data.phase.report_status;
       const job = data.job || {};
       const health = job.health || 'idle';
       const cls = healthClass(health);
@@ -2632,8 +2954,10 @@ def index_html_cn_v3() -> bytes:
       $('startBtn').disabled = !!job.running;
       $('stopBtn').disabled = !job.running;
       $('phaseFlow').innerHTML = data.phases.map(p =>
-        `<div class="phase ${p.status}"><strong>${p.index}. ${esc(p.key)}</strong><br><span>${esc(p.title)}</span></div>`
+        `<button class="phase ${p.status}" data-url="${esc(p.page_url)}"><strong>${esc(p.index)}. ${esc(p.title)}</strong><span class="phaseMeta">${esc(p.status_text || p.status)} · ${esc(p.present_count || 0)}/${esc(p.required_count || 0)}</span></button>`
       ).join('');
+      document.querySelectorAll('.phase[data-url]').forEach(el => el.addEventListener('click', () => window.open(el.dataset.url, '_blank')));
+      renderWorkflowEditor(data.phases);
     }
     function renderCodexStatus(data) {
       if (!data.available) {
@@ -2697,6 +3021,8 @@ def index_html_cn_v3() -> bytes:
     }
     async function refreshMemory() {
       const mem = await api('/api/memory');
+      $('memoryProfile').value = mem.profile || 'balanced';
+      $('memoryProfileText').textContent = mem.description || '';
       $('memSummary').checked = !!mem.summary;
       $('memLogs').checked = !!mem.logs;
       $('memHuman').checked = !!mem.human_interventions;
@@ -2753,12 +3079,32 @@ def index_html_cn_v3() -> bytes:
     $('saveMemoryBtn').addEventListener('click', async () => {
       try {
         await api('/api/memory', {method: 'POST', body: JSON.stringify({
+          profile: $('memoryProfile').value,
           summary: $('memSummary').checked,
           logs: $('memLogs').checked,
           human_interventions: $('memHuman').checked,
           artifact_index: $('memArtifacts').checked
         })});
         await refreshMemory();
+      } catch (err) {}
+    });
+    $('memoryProfile').addEventListener('change', () => {
+      applyMemoryProfile($('memoryProfile').value);
+      const text = $('memoryProfile').selectedOptions[0]?.textContent || '';
+      $('memoryProfileText').textContent = text === '自定义' ? '手动选择高级来源。' : '保存后下一轮 Codex 会按这个记忆模式读取上下文。';
+    });
+    $('saveWorkflowBtn').addEventListener('click', async () => {
+      try {
+        await api('/api/workflow', {method: 'POST', body: JSON.stringify({phases: workflowRowsFromDom()})});
+        workflowDirty = false;
+        await refreshStatus();
+      } catch (err) {}
+    });
+    $('resetWorkflowBtn').addEventListener('click', async () => {
+      try {
+        await api('/api/workflow', {method: 'POST', body: JSON.stringify({reset: true})});
+        workflowDirty = false;
+        await refreshStatus();
       } catch (err) {}
     });
     refreshAll();
@@ -2806,6 +3152,8 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 self.send_json(payload)
             elif path == "/api/projects":
                 self.send_json({"projects": discover_projects(self.root)})
+            elif path == "/api/workflow":
+                self.send_json({"phases": researchctl.workflow_config_for_ui(self.root)})
             elif path == "/api/codex/status":
                 self.send_json(codex_status(self.root))
             elif path == "/api/logs":
@@ -2835,6 +3183,9 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
             elif path == "/preview":
                 rel = query.get("path", [""])[0]
                 self.send_payload(preview_html(self.root, rel), "text/html; charset=utf-8")
+            elif path == "/phase":
+                key = str(query.get("key", [""])[0])
+                self.send_payload(phase_page_html(self.root, key), "text/html; charset=utf-8")
             elif path.startswith("/files/"):
                 rel = safe_rel_path(path.removeprefix("/files/"))
                 file_path = self.root / rel
@@ -2880,6 +3231,26 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True, "prompt": prompt, "path": HUMAN_INTERVENTIONS})
             elif parsed.path == "/api/memory":
                 self.send_json(write_memory_config(self.root, body))
+            elif parsed.path == "/api/workflow":
+                if body.get("reset"):
+                    try:
+                        researchctl.workflow_config_path(self.root).unlink()
+                    except FileNotFoundError:
+                        pass
+                    rows = researchctl.workflow_config_for_ui(self.root)
+                else:
+                    raw_phases = body.get("phases")
+                    if not isinstance(raw_phases, list):
+                        self.send_error_json(400, "phases must be a list")
+                        return
+                    rows = researchctl.write_workflow_config(self.root, raw_phases)
+                enabled_keys = [str(item["key"]) for item in rows if item.get("enabled", True)]
+                state = researchctl.load_state(self.root)
+                if state.get("phase") != "complete" and str(state.get("phase")) not in enabled_keys:
+                    state["phase"] = enabled_keys[0] if enabled_keys else "complete"
+                    researchctl.write_state(self.root, state)
+                researchctl.append_log(self.root, "Web UI workflow config updated")
+                self.send_json({"phases": rows})
             elif parsed.path == "/api/run/start":
                 ok, message = self.manager.start_loop(
                     self.root,

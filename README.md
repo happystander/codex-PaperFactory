@@ -72,7 +72,7 @@ The controller advances only when required artifacts exist and the phase report 
 5. `method_design`: gap-driven method, atomic concept decomposition, implementation plan, staged escalation, falsifying ablations.
 6. `method_smoke`: minimal self-contained method implementation, project manifest, and smoke-test evidence.
 7. `advanced_comparison`: fair comparison to strong baselines or released checkpoints, with judge/refine audit.
-8. `paper_evidence`: main results, ablations, failure cases, experiment analysis, figure plan, source-data manifest.
+8. `paper_evidence`: main results, ablations, failure cases, experiment analysis, scientific figures, editable Draw.io diagram bundles, figure plan, source-data manifest.
 9. `paper_drafting`: claim-to-evidence map, issues-style writing contract, LaTeX/BibTeX source, paper, and appendix written only from completed evidence.
 10. `internal_review`: reviewer-style check for novelty, evidence, fairness, reproducibility, LaTeX QA, and atomic concept support.
 
@@ -110,7 +110,7 @@ Check local dependencies and generate the project UI:
 /path/to/codex-PaperFactory/paperfactory web --open
 ```
 
-Chinese usage notes are in `docs/usage.zh.md`; launcher and dashboard details are in `docs/local-ui.md`. The AI-Researcher-inspired workflow additions are documented in `docs/ai-researcher-adaptation.md`; the `latex-paper-skills` writing integration is documented in `docs/latex-paper-skills-adaptation.md`.
+Chinese usage notes are in `docs/usage.zh.md`; launcher and dashboard details are in `docs/local-ui.md`. The AI-Researcher-inspired workflow additions are documented in `docs/ai-researcher-adaptation.md`; the `latex-paper-skills` writing integration is documented in `docs/latex-paper-skills-adaptation.md`; editable Draw.io figure bundles are documented in `docs/drawio-figure-integration.md`.
 
 ## Interactive Web UI
 
@@ -144,6 +144,7 @@ Human intervention notes are applied on the next cycle. If an active `codex exec
 - `paper-reader`: source-grounded paper reading notes, baseline facts, figure/table anchors.
 - `citation-workflow`: BibTeX/Zotero-exported library search, claim-to-citation support maps, LaTeX/Typst citation snippets.
 - `scientific-figure`: paper-ready figure contracts, source-data manifests, matplotlib style rules, captions, and export QA.
+- `drawio-academic-skills`: editable `.drawio + .spec.yaml + .arch.json + .svg` bundles for architecture, workflow, roadmap, and method diagrams.
 - `conference-paper-writing`: conference-style paper drafting from evidence, table policy, limitations, reproducibility, and internal review checks.
 - `latex-typst-paper`: source-aware checks for LaTeX/Typst manuscripts, bibliography, figures, tables, pseudocode, labels, and venue formatting.
 - `academic-polishing`: claim-safe English/Chinese academic polishing, translation, title/abstract cleanup, and de-AI passes.
@@ -201,6 +202,7 @@ Run a lightweight mechanical check before deeper review:
 - Mark proxy, smoke, and diagnostic comparisons explicitly.
 - Do not draft a paper before `paper_evidence` is complete.
 - Every paper figure needs source data, plotting script, caption logic, and manifest entry.
+- Every structural diagram should preserve its editable Draw.io bundle, not only a rendered image.
 - Every citation should map to a specific claim and support grade.
 - Every late-stage paper should keep a writing issue contract and LaTeX QA record.
 - If protocols differ, mark the comparison diagnostic rather than final.

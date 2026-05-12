@@ -85,7 +85,7 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 5. `method_design`: 基于明确 gap 设计方法和可证伪消融。
 6. `method_smoke`: 最小方法路径烟测。
 7. `advanced_comparison`: 公平比较高级 baseline 或官方 checkpoint。
-8. `paper_evidence`: 整理主结果、消融、鲁棒性、失败边界、复现信息，并用 `scientific-figure` 规划论文图和 source-data manifest。
+8. `paper_evidence`: 整理主结果、消融、鲁棒性、失败边界、复现信息，并用 `scientific-figure` 规划论文图，用 `drawio-academic-skills` 生成可编辑结构图 bundle 和 source-data manifest。
 9. `paper_drafting`: 只基于已有证据写论文和 appendix，同时生成写作 issue 合同、LaTeX/BibTeX 源文件，并用 `conference-paper-writing` 与 `latex-paper-skills` 控制论文表达。
 10. `internal_review`: 以审稿人视角检查创新性、证据、公平性、复现性和 LaTeX QA。
 
@@ -94,6 +94,7 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 ## 科研绘图与论文写作
 
 - `scientific-figure`: 在 `paper_evidence` 阶段规划论文图、source data、caption 和导出格式。
+- `drawio-academic-skills`: 来自 `drawio-skills`，用于论文架构图、流程图、roadmap、方法图，默认保留 `.drawio + .spec.yaml + .arch.json + .svg` 可编辑 bundle。
 - `conference-paper-writing`: 在 `paper_drafting` 和 `internal_review` 阶段把证据转成会议论文表述、表格、限制和复现说明。
 - `paper-reader`: 在 `survey` 阶段做有 source anchor 的论文精读笔记。
 - `citation-workflow`: 管理 BibTeX/Zotero 导出的文献库，做 claim-to-citation 支撑映射。

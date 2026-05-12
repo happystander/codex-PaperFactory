@@ -539,7 +539,7 @@ def command_doctor(args: argparse.Namespace) -> int:
     checks: list[tuple[str, str, str]] = []
     checks.append(("python", "OK", sys.version.split()[0]))
     checks.append(("plugin root", "OK" if (ROOT / ".codex-plugin" / "plugin.json").exists() else "ERROR", str(ROOT)))
-    for binary in ("git", "codex"):
+    for binary in ("git", "codex", "node"):
         found = shutil.which(binary)
         checks.append((binary, "OK" if found else "WARN", found or "not found on PATH"))
     try:
@@ -561,6 +561,7 @@ def command_doctor(args: argparse.Namespace) -> int:
         "empirical-paper-writer",
         "latex-rhythm-refiner",
         "results-backfill",
+        "drawio-academic-skills",
     )
     for skill_name in latex_skill_names:
         skill_file = skills_root / skill_name / "SKILL.md"
@@ -577,6 +578,33 @@ def command_doctor(args: argparse.Namespace) -> int:
             "skill:_shared",
             "OK" if shared_utils.exists() else "WARN",
             str(shared_utils) if shared_utils.exists() else "required by latex-paper-skills scripts",
+        )
+    )
+    drawio_cli = skills_root / "drawio-academic-skills" / "scripts" / "cli.js"
+    drawio_detail = str(drawio_cli) if drawio_cli.exists() else "drawio-academic-skills CLI not installed"
+    drawio_status = "OK" if drawio_cli.exists() else "WARN"
+    node_bin = shutil.which("node")
+    if drawio_cli.exists() and node_bin:
+        try:
+            proc = subprocess.run(
+                [node_bin, str(drawio_cli), "--help"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=8,
+                check=False,
+            )
+            if proc.returncode != 0:
+                drawio_status = "WARN"
+                drawio_detail = (proc.stderr or proc.stdout).strip().splitlines()[0][:120]
+        except Exception as exc:
+            drawio_status = "WARN"
+            drawio_detail = str(exc)
+    checks.append(
+        (
+            "drawio cli",
+            drawio_status,
+            drawio_detail,
         )
     )
 

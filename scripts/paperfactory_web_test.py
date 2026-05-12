@@ -50,12 +50,33 @@ def main() -> int:
             assert "Codex 现在在做什么" in index
             assert "研究任务" in index
             assert "文件树" in index
+            assert "保存流程" in index
+            assert "标准记忆" in index
 
             status = fetch_json(base + "/api/status")
             assert status["phase"]["key"] == "scope"
+            assert status["phase"]["display_status"]
+            assert status["phase"]["page_url"] == "/phase?key=scope"
             assert status["job"]["running"] is False
             assert status["job"]["health"] == "idle"
             assert status["job"]["state_label"]
+
+            phase_page = fetch_text(base + "/phase?key=scope")
+            assert "Research Scope" in phase_page
+            assert "必需产物" in phase_page
+
+            workflow = fetch_json(base + "/api/workflow")
+            assert workflow["phases"][0]["key"] == "scope"
+            edited = dict(workflow)
+            edited["phases"] = [dict(item) for item in workflow["phases"]]
+            edited["phases"][0]["title"] = "自定义范围"
+            edited["phases"][1], edited["phases"][2] = edited["phases"][2], edited["phases"][1]
+            saved_workflow = fetch_json(base + "/api/workflow", edited)
+            assert saved_workflow["phases"][0]["title"] == "自定义范围"
+            status = fetch_json(base + "/api/status")
+            assert status["phases"][0]["title"] == "自定义范围"
+            reset_workflow = fetch_json(base + "/api/workflow", {"reset": True})
+            assert reset_workflow["phases"][0]["title"] == "Research Scope"
 
             projects = fetch_json(base + "/api/projects")
             assert any(item["research_dir"] == str(root) and item["current"] for item in projects["projects"])
@@ -122,7 +143,11 @@ def main() -> int:
 
             memory = fetch_json(base + "/api/memory")
             assert memory["summary"] is True
-            memory = fetch_json(base + "/api/memory", {"logs": False, "artifact_index": False})
+            assert memory["profile"]
+            memory = fetch_json(base + "/api/memory", {"profile": "focused"})
+            assert memory["profile"] == "focused"
+            assert memory["logs"] is False
+            memory = fetch_json(base + "/api/memory", {"profile": "custom", "logs": False, "artifact_index": False})
             assert memory["logs"] is False
             assert memory["artifact_index"] is False
 

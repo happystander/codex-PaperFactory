@@ -16,6 +16,7 @@ The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (f
 | `paper-reader` | `nature-reader`, `huggingface-papers`, `auto-research` | Source-grounded paper reading and baseline extraction |
 | `citation-workflow` | `bib-search-citation`, `nature-citation`, `zotero`, `huggingface-papers` | Citation search, support grading, BibTeX/Typst/LaTeX snippets |
 | `scientific-figure` | `plot`, `nature-figure`, conference writing rules | Figure contracts, source-data manifests, export QA |
+| `drawio-academic-skills` | `bahayonghang/drawio-skills` | Editable Draw.io bundles for paper architecture, workflow, roadmap, and method diagrams |
 | `conference-paper-writing` | existing project `conference-paper-writing`, academic writing skills | Claims-to-evidence drafting for ML/AI papers |
 | `latex-typst-paper` | `latex-paper-en`, `typst-paper` | Source-aware paper hygiene and format checks |
 | `academic-polishing` | `nature-polishing`, LaTeX/Typst expression modules | Claim-safe polishing, translation, title/abstract cleanup |
@@ -41,6 +42,7 @@ The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (f
 - `scripts/manuscript_check.py`: lightweight manuscript hygiene checks.
 - `scripts/make_metric_plot.py`: simple metric plotting with paper-style exports.
 - `paperfactory doctor`: checks whether the external `latex-paper-skills` bundle and its `_shared` runtime helpers are installed.
+- `drawio-academic-skills`: installed as an external sibling skill; PaperFactory checks for its CLI and asks Codex to preserve editable diagram bundles.
 
 ## Maintenance Rule
 

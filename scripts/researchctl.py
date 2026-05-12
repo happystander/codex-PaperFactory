@@ -19,6 +19,7 @@ from typing import Any
 
 STATE_VERSION = 1
 DEFAULT_RESEARCH_DIR = ".research"
+WORKFLOW_CONFIG = "workflow.json"
 COMPLETE_STATUSES = {"complete", "completed", "pass", "passed"}
 NON_ADVANCING_STATUSES = {"needs_more_work", "blocked", "failed", "error"}
 
@@ -161,17 +162,21 @@ PHASES: tuple[Phase, ...] = (
         objective="Assemble paper-ready evidence without overclaiming.",
         required=(
             "figures/figure_plan.md",
+            "figures/diagram_plan.md",
             "figures/source_data_manifest.json",
+            "figures/drawio_bundle_manifest.json",
             "results/main_results.md",
             "results/ablations.md",
             "results/failure_cases.md",
             "results/experiment_analysis.md",
             "reports/paper_evidence.json",
         ),
-        gate="Evidence includes main results, ablations, robustness or failure cases, experiment analysis, statistics or multi-seed checks when appropriate, and reproducibility notes.",
+        gate="Evidence includes main results, ablations, robustness or failure cases, experiment analysis, paper figures/diagrams with editable source bundles, statistics or multi-seed checks when appropriate, and reproducibility notes.",
         prompt_focus=(
             "Turn raw metrics into tables with protocol details.",
             "Use the scientific-figure skill to plan paper figures and source-data traceability.",
+            "Use drawio-academic-skills for architecture, workflow, roadmap, ablation pipeline, and formula-safe diagrams; keep .drawio, .spec.yaml, .arch.json, and .svg bundles together under figures/.",
+            "Write figures/diagram_plan.md and figures/drawio_bundle_manifest.json with each diagram's purpose, source bundle, export path, caption intent, and validation status.",
             "Write an experiment-analysis note that explains observed gains, failures, confounders, and justified follow-up experiments.",
             "Add ablations that test the claimed mechanism.",
             "Include negative results and boundaries that matter for honest claims.",
@@ -231,6 +236,112 @@ PHASES: tuple[Phase, ...] = (
 PHASE_BY_KEY = {phase.key: phase for phase in PHASES}
 
 
+def workflow_config_path(root: Path) -> Path:
+    return root / WORKFLOW_CONFIG
+
+
+def phase_config_dict(phase: Phase, *, enabled: bool = True) -> dict[str, Any]:
+    return {
+        "key": phase.key,
+        "title": phase.title,
+        "objective": phase.objective,
+        "gate": phase.gate,
+        "enabled": enabled,
+    }
+
+
+def workflow_config_for_ui(root: Path) -> list[dict[str, Any]]:
+    """Return editable workflow rows, preserving disabled/customized phases."""
+    defaults = {phase.key: phase for phase in PHASES}
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    path = workflow_config_path(root)
+    raw_items: list[Any] = []
+    if path.exists():
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            raw = {}
+        if isinstance(raw, dict) and isinstance(raw.get("phases"), list):
+            raw_items = raw["phases"]
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "")
+        if key not in defaults or key in seen:
+            continue
+        base = defaults[key]
+        rows.append(
+            {
+                "key": key,
+                "title": str(item.get("title") or base.title),
+                "objective": str(item.get("objective") or base.objective),
+                "gate": str(item.get("gate") or base.gate),
+                "enabled": bool(item.get("enabled", True)),
+            }
+        )
+        seen.add(key)
+    for phase in PHASES:
+        if phase.key not in seen:
+            rows.append(phase_config_dict(phase))
+    return rows
+
+
+def configured_phases(root: Path | None = None) -> tuple[Phase, ...]:
+    if root is None:
+        return PHASES
+    phases: list[Phase] = []
+    for item in workflow_config_for_ui(root):
+        if not item.get("enabled", True):
+            continue
+        base = PHASE_BY_KEY[str(item["key"])]
+        phases.append(
+            Phase(
+                key=base.key,
+                title=str(item.get("title") or base.title),
+                objective=str(item.get("objective") or base.objective),
+                required=base.required,
+                gate=str(item.get("gate") or base.gate),
+                prompt_focus=base.prompt_focus,
+            )
+        )
+    return tuple(phases) or PHASES
+
+
+def write_workflow_config(root: Path, phases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    defaults = {phase.key: phase for phase in PHASES}
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in phases:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "")
+        if key not in defaults or key in seen:
+            continue
+        base = defaults[key]
+        title = str(item.get("title") or base.title).strip() or base.title
+        objective = str(item.get("objective") or base.objective).strip() or base.objective
+        gate = str(item.get("gate") or base.gate).strip() or base.gate
+        rows.append(
+            {
+                "key": key,
+                "title": title[:120],
+                "objective": objective[:500],
+                "gate": gate[:700],
+                "enabled": bool(item.get("enabled", True)),
+            }
+        )
+        seen.add(key)
+    for phase in PHASES:
+        if phase.key not in seen:
+            rows.append(phase_config_dict(phase))
+    workflow_config_path(root).write_text(
+        json.dumps({"schema_version": 1, "phases": rows}, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return rows
+
+
 def now() -> str:
     return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
 
@@ -273,6 +384,7 @@ def ensure_dirs(root: Path) -> None:
         "paper",
         "reviews",
         "reports",
+        "pages",
     ):
         (root / rel).mkdir(parents=True, exist_ok=True)
 
@@ -319,17 +431,22 @@ def read_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
-def current_phase(state: dict[str, Any]) -> Phase | None:
+def current_phase(state: dict[str, Any], root: Path | None = None) -> Phase | None:
     key = state.get("phase")
     if key == "complete":
         return None
+    for phase in configured_phases(root):
+        if phase.key == key:
+            return phase
+    if key in PHASE_BY_KEY:
+        return PHASE_BY_KEY[str(key)]
     if key not in PHASE_BY_KEY:
         raise SystemExit(f"Unknown phase in state.json: {key!r}")
     return PHASE_BY_KEY[str(key)]
 
 
-def phase_index(key: str) -> int:
-    for index, phase in enumerate(PHASES):
+def phase_index(key: str, root: Path | None = None) -> int:
+    for index, phase in enumerate(configured_phases(root)):
         if phase.key == key:
             return index
     raise KeyError(key)
@@ -398,7 +515,7 @@ def command_init(args: argparse.Namespace) -> int:
 def command_status(args: argparse.Namespace) -> int:
     root = resolve_research_dir(args)
     state = load_state(root)
-    phase = current_phase(state)
+    phase = current_phase(state, root)
     print(f"Research dir: {root}")
     print(f"Task: {state.get('task', '')}")
     if phase is None:
@@ -424,7 +541,7 @@ def shell_quote(path: Path) -> str:
 
 
 def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
-    phase = current_phase(state)
+    phase = current_phase(state, root)
     controller = Path(__file__).resolve()
     if phase is None:
         return (
@@ -444,7 +561,7 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     if phase.key == "survey":
         companion_skills.extend(["paper-reader", "citation-workflow"])
     if phase.key == "paper_evidence":
-        companion_skills.extend(["scientific-figure", "citation-workflow", "data-availability"])
+        companion_skills.extend(["scientific-figure", "drawio-academic-skills", "citation-workflow", "data-availability"])
     if phase.key in {"paper_drafting", "internal_review"}:
         companion_skills.append("conference-paper-writing")
     if phase.key == "paper_drafting":
@@ -540,6 +657,7 @@ User-visible progress feed:
   {{"ts":"<ISO time>","role":"agent","phase":"{phase.key}","status":"working|blocked|done|note","message":"<1-3 user-facing sentences about what you did or are doing>","files":["<artifact path>", "..."]}}
 - Write a progress event when you start the cycle, after each meaningful artifact or experiment action, when blocked, and before finishing.
 - The message must be natural language for the human user. Do not dump raw logs, stack traces, or tool output into this feed.
+- Maintain a concise user-facing phase page at .research/pages/{phase.key}.md. Update it after meaningful work with: what changed, evidence produced, decisions made, blockers, and next action. This page is for the UI, so write it in natural language and link artifact paths.
 
 Phase focus:
 {focus_list}
@@ -568,7 +686,7 @@ def command_next_prompt(args: argparse.Namespace) -> int:
 def command_advance(args: argparse.Namespace) -> int:
     root = resolve_research_dir(args)
     state = load_state(root)
-    phase = current_phase(state)
+    phase = current_phase(state, root)
     if phase is None:
         print("Already complete.")
         return 0
@@ -582,8 +700,13 @@ def command_advance(args: argparse.Namespace) -> int:
         return 1
 
     old_key = phase.key
-    idx = phase_index(old_key)
-    next_key = "complete" if idx + 1 >= len(PHASES) else PHASES[idx + 1].key
+    phases = configured_phases(root)
+    phase_keys = [item.key for item in phases]
+    if old_key in phase_keys:
+        idx = phase_keys.index(old_key)
+        next_key = "complete" if idx + 1 >= len(phases) else phases[idx + 1].key
+    else:
+        next_key = phases[0].key if phases else "complete"
     state.setdefault("phase_history", []).append(
         {
             "phase": old_key,
@@ -629,12 +752,14 @@ def command_validate(args: argparse.Namespace) -> int:
         print(f"ERROR: unsupported schema_version {state.get('schema_version')}")
         errors += 1
 
+    phases = configured_phases(root)
+    phase_keys = {phase.key for phase in phases}
     phase_key = state.get("phase")
-    if phase_key != "complete" and phase_key not in PHASE_BY_KEY:
+    if phase_key != "complete" and phase_key not in phase_keys and phase_key not in PHASE_BY_KEY:
         print(f"ERROR: unknown phase {phase_key!r}")
         errors += 1
 
-    for phase in PHASES:
+    for phase in phases:
         report = report_for(root, phase)
         if report is None:
             warnings += 1

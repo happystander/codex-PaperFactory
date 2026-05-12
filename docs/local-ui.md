@@ -41,11 +41,13 @@ It provides:
 - start/pause buttons for autonomous Codex cycles;
 - detached background execution, so a started run continues after the browser tab or Web UI server is closed;
 - a concise Chinese agent-style interface with explicit running state, PID, last activity, a left-side file tree, and a phase flow;
+- per-phase display pages at `/phase?key=<phase>`, backed by `.research/pages/<phase>.md` when Codex has written one and by a fallback artifact/report summary otherwise;
+- drag-and-save workflow editing for phase order, enabled phases, and display names; saved changes live in `.research/workflow.json` and affect later prompt generation and phase advancement;
 - project switching across nearby `.research/` workspaces, so each research task can keep its own prompt memory settings;
 - Codex status monitoring from `~/.codex/sessions`, including active-session quota, reset time, context window, and token usage;
 - Codex-authored natural-language progress from `.research/progress/feed.jsonl`; the chat area does not synthesize progress or render raw logs;
 - cycle count, interval, and optional run-duration controls;
-- memory switches for summary, logs, human interventions, and current artifacts;
+- friendly memory profiles for light, standard, deep, and clean-start modes, plus advanced switches for summary, logs, human interventions, and current artifacts;
 - human intervention messages saved to `.research/human_interventions.md` and injected into the next generated prompt;
 - task editing that updates both `.research/task.md` and `.research/state.json`;
 - artifact browsing with full-page preview for text, image, SVG, and PDF files under `.research/`;
