@@ -410,6 +410,18 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
         if companion_skills
         else ""
     )
+    intervention_path = root / "human_interventions.md"
+    if intervention_path.exists():
+        intervention_text = intervention_path.read_text(encoding="utf-8", errors="ignore")[-4000:].strip()
+    else:
+        intervention_text = ""
+    intervention_section = (
+        "\nHuman intervention notes to honor in the next cycle:\n"
+        f"{intervention_text}\n"
+        "\nIf a note conflicts with older logs or plans, follow the newest human intervention and record the change.\n"
+        if intervention_text
+        else ""
+    )
 
     return f"""You are running the Codex PaperFactory long-horizon workflow.
 
@@ -432,6 +444,7 @@ Current phase report status: {status or "missing"}
 Phase focus:
 {focus_list}
 {companion_text}
+{intervention_section}
 
 Operating rules:
 - Read .research/state.json, .research/task.md, .research/logs/research.log, and .research/results/summary.md before acting.

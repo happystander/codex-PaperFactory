@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import stat
 import tempfile
 import threading
 import time
@@ -43,7 +44,8 @@ def main() -> int:
         base = f"http://127.0.0.1:{server.server_address[1]}"
         try:
             index = fetch_text(base + "/")
-            assert "Codex PaperFactory Control" in index
+            assert "PaperFactory 智能体" in index
+            assert "后台运行" in index
 
             status = fetch_json(base + "/api/status")
             assert status["phase"]["key"] == "scope"
@@ -56,6 +58,11 @@ def main() -> int:
             prompt = fetch_json(base + "/api/prompt", {})
             assert "updated web smoke task" in prompt["prompt"]
             assert (root / "next_prompt.md").exists()
+
+            intervention = fetch_json(base + "/api/intervention", {"message": "人工要求：优先检查引用真实性。"})
+            assert intervention["ok"] is True
+            assert "优先检查引用真实性" in intervention["prompt"]
+            assert (root / "human_interventions.md").exists()
 
             review = fetch_json(
                 base + "/api/review/prompt",
@@ -73,9 +80,32 @@ def main() -> int:
                 time.sleep(0.1)
             assert status["job"]["running"] is False
             assert status["job"]["completed"] == 1
+            assert status["job"]["detached"] is True
 
             artifacts = fetch_json(base + "/api/artifacts")
             assert any(item["path"] == "next_prompt.md" for item in artifacts["files"])
+            stream = fetch_json(base + "/api/stream?limit=80")
+            assert any("优先检查引用真实性" in item["text"] for item in stream["messages"])
+
+            fake_codex = Path(tmp) / "fake_codex.sh"
+            fake_codex.write_text("#!/usr/bin/env bash\necho fake codex visible output\nsleep 8\n", encoding="utf-8")
+            fake_codex.chmod(fake_codex.stat().st_mode | stat.S_IXUSR)
+            start = fetch_json(
+                base + "/api/run/start",
+                {"cycles": 1, "interval": 1, "dry_run": False, "codex_bin": str(fake_codex)},
+            )
+            assert start["ok"] is True
+            status = fetch_json(base + "/api/status")
+            assert status["job"]["running"] is True
+            assert status["job"]["current_pid"]
+            stopped = fetch_json(base + "/api/run/stop", {})
+            assert stopped["ok"] is True
+            for _ in range(20):
+                status = fetch_json(base + "/api/status")
+                if not status["job"]["running"]:
+                    break
+                time.sleep(0.1)
+            assert status["job"]["running"] is False
         finally:
             manager.stop()
             server.shutdown()

@@ -30,7 +30,7 @@ It shows the active phase, gate status, missing artifacts, phase progress, recen
 
 ## Interactive Web UI
 
-The interactive UI starts a local server:
+The interactive UI starts a local server. The default page is a concise Chinese agent-style console:
 
 ```bash
 /path/to/codex-PaperFactory/paperfactory web --host 127.0.0.1 --port 8765 --open
@@ -39,13 +39,18 @@ The interactive UI starts a local server:
 It provides:
 
 - start/pause buttons for autonomous Codex cycles;
-- live polling for `.research/logs/research.log`, `.research/logs/codex-loop.out`, and `.research/logs/review.out`;
+- detached background execution, so a started run continues after the browser tab or Web UI server is closed;
+- an agent-style stream for visible Codex CLI output, tool logs, and system records;
+- human intervention messages saved to `.research/human_interventions.md` and injected into the next generated prompt;
+- live polling for `.research/logs/research.log`, `.research/logs/paperfactory-run.out`, `.research/logs/codex-loop.out`, and `.research/logs/review.out`;
 - task editing that updates both `.research/task.md` and `.research/state.json`;
 - artifact browsing and text preview for files under `.research/`;
 - figure browsing for `.svg`, `.pdf`, `.png`, `.jpg`, `.jpeg`, and `.webp` files under `.research/figures/`;
 - a top-conference review panel that generates or runs a `manuscript-audit` prompt.
 
 For a non-destructive UI test, enable `Dry run` before clicking `Start` or `Run Auto Review`. Dry-run mode refreshes prompts and logs without invoking `codex exec`.
+
+Human intervention takes effect on the next cycle. To force an immediate course correction, pause the background process, send the intervention, then start a new cycle.
 
 The top-conference review prompt is written to:
 

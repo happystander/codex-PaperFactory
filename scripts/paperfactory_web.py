@@ -8,6 +8,7 @@ import base64
 import json
 import mimetypes
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -42,6 +43,8 @@ TEXT_EXTENSIONS = {
     ".yml",
 }
 FIGURE_EXTENSIONS = {".svg", ".pdf", ".png", ".jpg", ".jpeg", ".webp"}
+JOB_FILE = "web_job.json"
+HUMAN_INTERVENTIONS = "human_interventions.md"
 
 
 def now() -> str:
@@ -100,6 +103,94 @@ def read_tail(path: Path, limit: int) -> list[str]:
         return []
     lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
     return lines[-limit:]
+
+
+def job_path(root: Path) -> Path:
+    return root / "logs" / JOB_FILE
+
+
+def read_job(root: Path) -> dict[str, Any]:
+    path = job_path(root)
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def write_job(root: Path, payload: dict[str, Any]) -> None:
+    path = job_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def pid_running(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def stop_pid(pid: int | None) -> bool:
+    if not pid:
+        return False
+    try:
+        os.killpg(pid, signal.SIGTERM)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        try:
+            os.kill(pid, signal.SIGTERM)
+            return True
+        except OSError:
+            return False
+
+
+def intervention_path(root: Path) -> Path:
+    return root / HUMAN_INTERVENTIONS
+
+
+def append_intervention(root: Path, message: str) -> None:
+    text = message.strip()
+    if not text:
+        raise ValueError("Intervention message must not be empty")
+    path = intervention_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(f"\n## {now()}\n\n{text}\n")
+    researchctl.append_log(root, "Human intervention recorded; next generated prompt will include it")
+
+
+def read_interventions(root: Path, limit_chars: int = 4000) -> str:
+    path = intervention_path(root)
+    if not path.exists():
+        return ""
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    return text[-limit_chars:]
+
+
+def stream_messages(root: Path, limit: int = 120) -> list[dict[str, str]]:
+    sources = [
+        ("系统", researchctl.log_path(root)),
+        ("后台", root / "logs" / "paperfactory-run.out"),
+        ("Codex", root / "logs" / "codex-loop.out"),
+        ("审稿", root / "logs" / "review.out"),
+        ("人工", intervention_path(root)),
+    ]
+    items: list[dict[str, str]] = []
+    for role, path in sources:
+        for line in read_tail(path, limit):
+            text = line.strip()
+            if not text:
+                continue
+            items.append({"role": role, "text": text})
+    return items[-limit:]
 
 
 def phase_payload(root: Path) -> dict[str, Any]:
@@ -164,6 +255,7 @@ def phase_payload(root: Path) -> dict[str, Any]:
         },
         "progress": {"current": done, "total": total},
         "phases": phases,
+        "interventions": read_interventions(root),
     }
 
 
@@ -242,6 +334,7 @@ class JobManager:
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
         self.process: subprocess.Popen[str] | None = None
+        self.root: Path | None = None
         self.status: dict[str, Any] = {
             "running": False,
             "mode": None,
@@ -255,34 +348,107 @@ class JobManager:
         }
 
     def snapshot(self) -> dict[str, Any]:
+        if self.root is not None:
+            job = read_job(self.root)
+            pid = int(job.get("pid") or 0) if job else 0
+            with self.lock:
+                proc = self.process
+            if proc is not None and proc.pid == pid:
+                running = proc.poll() is None
+            else:
+                running = pid_running(pid)
+            if job:
+                job["running"] = running
+                if not running and job.get("status") == "running":
+                    job["status"] = "finished_or_stopped"
+                    job["stopped_at"] = job.get("stopped_at") or datetime.now().astimezone().isoformat()
+                    write_job(self.root, job)
+                return {
+                    "running": running,
+                    "mode": job.get("mode"),
+                    "started_at": job.get("started_at"),
+                    "stopped_at": job.get("stopped_at"),
+                    "completed": job.get("completed", 0),
+                    "last_rc": job.get("last_rc"),
+                    "dry_run": bool(job.get("dry_run")),
+                    "message": job.get("message") or job.get("status") or "idle",
+                    "current_pid": pid or None,
+                    "detached": True,
+                }
         with self.lock:
             return dict(self.status)
 
     def start_loop(self, root: Path, interval: int, cycles: int | None, dry_run: bool, codex_bin: str) -> tuple[bool, str]:
-        with self.lock:
-            if self.status.get("running"):
-                return False, "A job is already running."
-            self.stop_event.clear()
-            self.status.update(
+        current = self.snapshot()
+        if current.get("running"):
+            return False, "后台任务正在运行。"
+        if dry_run:
+            write_next_prompt(root)
+            researchctl.append_log(root, "Web UI dry-run cycle: prompt refreshed")
+            write_job(
+                root,
                 {
-                    "running": True,
+                    "pid": None,
                     "mode": "loop",
+                    "status": "dry_run_complete",
                     "started_at": datetime.now().astimezone().isoformat(),
-                    "stopped_at": None,
-                    "completed": 0,
-                    "last_rc": None,
-                    "dry_run": dry_run,
-                    "message": "loop started",
-                    "current_pid": None,
-                }
+                    "stopped_at": datetime.now().astimezone().isoformat(),
+                    "completed": 1,
+                    "last_rc": 0,
+                    "dry_run": True,
+                    "message": "干跑完成：已刷新下一步 prompt",
+                },
             )
-            self.thread = threading.Thread(
-                target=self._loop_worker,
-                args=(root, max(1, interval), cycles, dry_run, codex_bin),
-                daemon=True,
-            )
-            self.thread.start()
-            return True, "Loop started."
+            return True, "干跑完成。"
+
+        log_file = root / "logs" / "paperfactory-run.out"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            sys.executable,
+            str(ROOT / "scripts" / "paperfactory.py"),
+            "--research-dir",
+            str(root),
+            "run",
+            "--interval",
+            str(max(1, interval)),
+            "--codex-bin",
+            codex_bin,
+        ]
+        if cycles is None:
+            cmd.extend(["--until", "2099-01-01 00:00:00"])
+        else:
+            cmd.extend(["--cycles", str(max(1, int(cycles)))])
+        handle = log_file.open("a", encoding="utf-8")
+        handle.write(f"\n[{now()}] detached paperfactory run start: {' '.join(cmd)}\n")
+        handle.flush()
+        proc = subprocess.Popen(
+            cmd,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+        )
+        handle.close()
+        with self.lock:
+            self.process = proc
+        write_job(
+            root,
+            {
+                "pid": proc.pid,
+                "mode": "loop",
+                "status": "running",
+                "started_at": datetime.now().astimezone().isoformat(),
+                "stopped_at": None,
+                "completed": 0,
+                "last_rc": None,
+                "dry_run": False,
+                "message": "后台长跑中，关闭网页不影响进程",
+                "command": cmd,
+                "log": "logs/paperfactory-run.out",
+            },
+        )
+        researchctl.append_log(root, f"Web UI detached loop started: pid={proc.pid}")
+        return True, f"后台任务已启动：PID {proc.pid}"
 
     def start_review(
         self,
@@ -293,32 +459,88 @@ class JobManager:
         dry_run: bool,
         codex_bin: str,
     ) -> tuple[bool, str]:
-        with self.lock:
-            if self.status.get("running"):
-                return False, "A job is already running."
-            self.stop_event.clear()
-            self.status.update(
+        current = self.snapshot()
+        if current.get("running"):
+            return False, "后台任务正在运行。"
+        prompt = build_review_prompt(root, venue, draft_path, mode)
+        prompt_path = root / "reviews" / "top_conference_review_prompt.md"
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        prompt_path.write_text(prompt, encoding="utf-8")
+        researchctl.append_log(root, f"Web UI review prompt generated: venue={venue or 'top conference'} mode={mode}")
+        if dry_run:
+            write_job(
+                root,
                 {
-                    "running": True,
+                    "pid": None,
                     "mode": "review",
+                    "status": "dry_run_complete",
                     "started_at": datetime.now().astimezone().isoformat(),
-                    "stopped_at": None,
-                    "completed": 0,
-                    "last_rc": None,
-                    "dry_run": dry_run,
-                    "message": "review started",
-                    "current_pid": None,
-                }
+                    "stopped_at": datetime.now().astimezone().isoformat(),
+                    "completed": 1,
+                    "last_rc": 0,
+                    "dry_run": True,
+                    "message": "干跑完成：已生成顶会审稿 prompt",
+                },
             )
-            self.thread = threading.Thread(
-                target=self._review_worker,
-                args=(root, venue, draft_path, mode, dry_run, codex_bin),
-                daemon=True,
-            )
-            self.thread.start()
-            return True, "Review started."
+            return True, "审稿 prompt 已生成。"
+
+        log_file = root / "logs" / "review.out"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        handle = log_file.open("a", encoding="utf-8")
+        handle.write(f"\n[{now()}] detached review start\n")
+        handle.flush()
+        proc = subprocess.Popen(
+            [codex_bin, "exec", "--full-auto", "--skip-git-repo-check", prompt],
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+        )
+        handle.close()
+        with self.lock:
+            self.process = proc
+        write_job(
+            root,
+            {
+                "pid": proc.pid,
+                "mode": "review",
+                "status": "running",
+                "started_at": datetime.now().astimezone().isoformat(),
+                "stopped_at": None,
+                "completed": 0,
+                "last_rc": None,
+                "dry_run": False,
+                "message": "后台审稿中，关闭网页不影响进程",
+                "log": "logs/review.out",
+            },
+        )
+        researchctl.append_log(root, f"Web UI detached review started: pid={proc.pid}")
+        return True, f"后台审稿已启动：PID {proc.pid}"
 
     def stop(self) -> tuple[bool, str]:
+        if self.root is not None:
+            job = read_job(self.root)
+            pid = int(job.get("pid") or 0) if job else 0
+            stopped = stop_pid(pid)
+            with self.lock:
+                proc = self.process
+            if proc is not None and proc.pid == pid:
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(pid, signal.SIGKILL)
+                        proc.wait(timeout=3)
+                    except OSError:
+                        pass
+            if job:
+                job["status"] = "stopped"
+                job["running"] = False
+                job["stopped_at"] = datetime.now().astimezone().isoformat()
+                job["message"] = "已请求暂停后台进程" if stopped else "没有发现可暂停的后台进程"
+                write_job(self.root, job)
+            researchctl.append_log(self.root, f"Web UI stop requested: pid={pid or 'none'} stopped={stopped}")
+            return True, "已请求暂停后台任务。" if stopped else "没有正在运行的后台任务。"
         self.stop_event.set()
         with self.lock:
             proc = self.process
@@ -832,6 +1054,417 @@ def index_html() -> bytes:
 """
 
 
+def index_html_cn() -> bytes:
+    return """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PaperFactory 智能体</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --line: #d9e0ec;
+      --text: #162033;
+      --muted: #627089;
+      --blue: #2563eb;
+      --green: #0f8a5f;
+      --red: #b42318;
+      --amber: #b7791f;
+      --soft: #eef4ff;
+      --ink: #101828;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+    }
+    header {
+      height: 58px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      gap: 12px;
+    }
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
+    h2 { margin: 0 0 10px; font-size: 15px; letter-spacing: 0; }
+    p { margin: 0; }
+    button, input, select, textarea {
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+    }
+    button {
+      min-height: 34px;
+      padding: 6px 10px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+    button.danger { background: var(--red); border-color: var(--red); color: #fff; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    input, select { min-height: 34px; padding: 6px 8px; }
+    textarea { width: 100%; min-height: 88px; padding: 8px; resize: vertical; }
+    .muted { color: var(--muted); }
+    .app {
+      display: grid;
+      grid-template-columns: 290px minmax(0, 1fr) 330px;
+      gap: 12px;
+      padding: 12px;
+      height: calc(100vh - 58px);
+      min-height: 640px;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      overflow: hidden;
+    }
+    .stack { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .kv { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 6px; font-size: 13px; }
+    .value { font-weight: 700; overflow-wrap: anywhere; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .ok, .complete { color: var(--green); background: #eaf7f1; border-color: #bce4d2; }
+    .current { color: var(--blue); background: #eaf1ff; border-color: #b8cdfd; }
+    .pending { color: var(--muted); background: #eef2f7; border-color: #d8dee8; }
+    .missing, .error { color: var(--red); background: #fff0ee; border-color: #ffc9c2; }
+    .warn { color: var(--amber); background: #fff8e7; border-color: #f4d28a; }
+    .bar { height: 10px; background: #e8edf5; border-radius: 999px; overflow: hidden; margin-top: 8px; }
+    .bar span { display: block; height: 100%; background: var(--blue); width: 0; }
+    .chat {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+    }
+    .stream {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
+      background: #fbfcff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .msg { display: flex; gap: 8px; margin-bottom: 10px; align-items: flex-start; }
+    .avatar {
+      flex: 0 0 42px;
+      min-height: 24px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--blue);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .bubble {
+      max-width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 13px;
+    }
+    .msg.human { flex-direction: row-reverse; }
+    .msg.human .avatar { background: #eaf7f1; color: var(--green); }
+    .msg.human .bubble { background: #f1fbf6; }
+    .composer { margin-top: 10px; }
+    .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .list { max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+    .item {
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+      cursor: pointer;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    .item:hover { background: #f2f6ff; }
+    pre {
+      margin: 0;
+      padding: 10px;
+      background: var(--ink);
+      color: #f9fafb;
+      border-radius: 6px;
+      overflow: auto;
+      max-height: 260px;
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+    .tabs { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+    .tab.active { border-color: var(--blue); color: var(--blue); background: #eaf1ff; }
+    .hidden { display: none; }
+    @media (max-width: 1120px) {
+      .app { grid-template-columns: 1fr; height: auto; }
+      .chat { height: 720px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>PaperFactory 智能体</h1>
+      <p class="muted" id="researchDir"></p>
+    </div>
+    <div class="row">
+      <span id="runPill" class="pill pending">空闲</span>
+      <button id="refreshBtn">刷新</button>
+    </div>
+  </header>
+  <main class="app">
+    <aside class="stack">
+      <section>
+        <h2>当前状态</h2>
+        <div class="kv">
+          <span class="muted">阶段</span><span class="value" id="phaseKey">...</span>
+          <span class="muted">报告</span><span class="value" id="reportStatus">...</span>
+          <span class="muted">进度</span><span class="value" id="progressText">...</span>
+          <span class="muted">缺失</span><span class="value" id="missingCount">...</span>
+        </div>
+        <div class="bar"><span id="progressBar"></span></div>
+      </section>
+      <section>
+        <h2>后台运行</h2>
+        <p class="muted">网页关闭后仍继续跑；重新打开会读取 PID 和日志。</p>
+        <div class="control-grid" style="margin-top:10px">
+          <label>间隔秒<input id="intervalInput" type="number" min="1" value="1800"></label>
+          <label>轮数<input id="cyclesInput" type="number" min="1" value="1"></label>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <label><input id="dryRunInput" type="checkbox"> 只演练</label>
+          <input id="codexInput" value="codex" style="width:110px">
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" id="startBtn">启动</button>
+          <button class="danger" id="stopBtn">暂停</button>
+        </div>
+        <p class="muted" id="runMessage" style="margin-top:8px"></p>
+      </section>
+      <section>
+        <h2>任务</h2>
+        <textarea id="taskText"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" id="saveTaskBtn">保存</button>
+          <button id="promptBtn">生成提示</button>
+        </div>
+      </section>
+      <section>
+        <h2>门禁</h2>
+        <p><strong id="phaseTitle"></strong></p>
+        <p class="muted" id="phaseGate"></p>
+      </section>
+    </aside>
+    <section class="chat">
+      <h2>对话与执行流</h2>
+      <p class="muted" style="margin-bottom:8px">这里显示 Codex CLI 的可见执行输出、工具日志和系统记录。</p>
+      <div class="stream" id="stream"></div>
+      <div class="composer">
+        <textarea id="interventionText" placeholder="人工介入：写给 Codex 的新要求。当前正在跑的一轮不会即时接收；下一轮 prompt 会自动带上。"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" id="sendInterventionBtn">发送介入</button>
+          <button id="rawLogBtn">查看原始日志</button>
+        </div>
+      </div>
+    </section>
+    <aside class="stack">
+      <section>
+        <h2>顶会审稿</h2>
+        <div class="control-grid">
+          <label>会议<input id="venueInput" value="NeurIPS/ICML/ICLR"></label>
+          <label>稿件<input id="draftInput" value="paper/paper_draft.md"></label>
+        </div>
+        <select id="reviewMode" style="width:100%; margin-top:8px">
+          <option value="deep-review">深度审稿</option>
+          <option value="quick-audit">快速审查</option>
+          <option value="gate">投稿门禁</option>
+        </select>
+        <div class="row" style="margin-top:8px">
+          <button id="reviewPromptBtn">生成审稿提示</button>
+          <button class="primary" id="reviewRunBtn">自动审稿</button>
+        </div>
+        <textarea id="reviewPrompt" style="margin-top:8px; min-height:130px" readonly></textarea>
+      </section>
+      <section>
+        <div class="tabs">
+          <button class="tab active" data-tab="artifacts">产物</button>
+          <button class="tab" data-tab="figures">图表</button>
+          <button class="tab" data-tab="prompt">提示</button>
+        </div>
+        <div id="tab-artifacts">
+          <div class="list" id="artifactList"></div>
+          <pre id="artifactPreview" style="margin-top:8px">选择产物预览</pre>
+        </div>
+        <div id="tab-figures" class="hidden">
+          <div class="list" id="figureList"></div>
+        </div>
+        <div id="tab-prompt" class="hidden">
+          <textarea id="nextPrompt" readonly style="min-height:260px"></textarea>
+        </div>
+      </section>
+    </aside>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {headers: {'content-type': 'application/json'}, ...options});
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    }
+    function cls(value) {
+      if (value === true || value === 'complete') return 'pill ok';
+      if (value === 'current' || value === 'running') return 'pill current';
+      if (value === false || value === 'missing') return 'pill missing';
+      return 'pill pending';
+    }
+    function renderStatus(payload) {
+      $('researchDir').textContent = payload.research_dir;
+      $('phaseKey').textContent = payload.phase.key;
+      $('reportStatus').textContent = payload.phase.report_status;
+      $('progressText').textContent = `${payload.progress.current}/${payload.progress.total}`;
+      $('progressBar').style.width = `${Math.round(payload.progress.current * 100 / payload.progress.total)}%`;
+      $('missingCount').textContent = payload.phase.missing.length;
+      $('taskText').value = payload.task || '';
+      $('phaseTitle').textContent = payload.phase.title;
+      $('phaseGate').textContent = payload.phase.gate;
+      const job = payload.job || {};
+      $('runPill').className = job.running ? 'pill current' : 'pill pending';
+      $('runPill').textContent = job.running ? `运行中 PID ${job.current_pid || ''}` : '空闲';
+      $('runMessage').textContent = job.message || '空闲';
+      $('startBtn').disabled = !!job.running;
+      $('reviewRunBtn').disabled = !!job.running;
+      $('stopBtn').disabled = !job.running;
+    }
+    function renderStream(messages) {
+      $('stream').innerHTML = messages.map(m => {
+        const human = m.role === '人工';
+        return `<div class="msg ${human ? 'human' : ''}"><span class="avatar">${m.role}</span><div class="bubble">${escapeHtml(m.text)}</div></div>`;
+      }).join('') || '<p class="muted">暂无输出</p>';
+      $('stream').scrollTop = $('stream').scrollHeight;
+    }
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    async function refreshStatus() {
+      renderStatus(await api('/api/status'));
+    }
+    async function refreshStream() {
+      const data = await api('/api/stream?limit=160');
+      renderStream(data.messages);
+    }
+    async function refreshArtifacts() {
+      const data = await api('/api/artifacts');
+      $('artifactList').innerHTML = data.files.map(f => `<div class="item" data-path="${f.path}">${f.path}<br><span class="muted">${f.kind} · ${f.size} bytes</span></div>`).join('') || '<div class="item">暂无产物</div>';
+      document.querySelectorAll('.item[data-path]').forEach(el => el.addEventListener('click', () => previewArtifact(el.dataset.path)));
+    }
+    async function refreshFigures() {
+      const data = await api('/api/figures');
+      $('figureList').innerHTML = data.files.map(f => `<div class="item"><a href="${f.url}" target="_blank">${f.path}</a><br><span class="muted">${f.size} bytes</span></div>`).join('') || '<div class="item">暂无图表</div>';
+    }
+    async function previewArtifact(path) {
+      const data = await api('/api/artifact?path=' + encodeURIComponent(path));
+      $('artifactPreview').textContent = data.encoding === 'text' ? data.text : `二进制文件：${data.path}`;
+    }
+    async function fullRefresh() {
+      await Promise.all([refreshStatus(), refreshStream(), refreshArtifacts(), refreshFigures()]);
+    }
+    $('refreshBtn').addEventListener('click', fullRefresh);
+    $('saveTaskBtn').addEventListener('click', async () => {
+      await api('/api/task', {method: 'POST', body: JSON.stringify({task: $('taskText').value})});
+      await fullRefresh();
+    });
+    $('promptBtn').addEventListener('click', async () => {
+      const data = await api('/api/prompt', {method: 'POST', body: '{}'});
+      $('nextPrompt').value = data.prompt;
+      document.querySelector('[data-tab="prompt"]').click();
+      await refreshArtifacts();
+    });
+    $('startBtn').addEventListener('click', async () => {
+      const cyclesRaw = $('cyclesInput').value.trim();
+      await api('/api/run/start', {method: 'POST', body: JSON.stringify({
+        interval: Number($('intervalInput').value || 1800),
+        cycles: cyclesRaw ? Number(cyclesRaw) : null,
+        dry_run: $('dryRunInput').checked,
+        codex_bin: $('codexInput').value || 'codex'
+      })});
+      await fullRefresh();
+    });
+    $('stopBtn').addEventListener('click', async () => {
+      await api('/api/run/stop', {method: 'POST', body: '{}'});
+      await fullRefresh();
+    });
+    $('sendInterventionBtn').addEventListener('click', async () => {
+      const text = $('interventionText').value.trim();
+      if (!text) return;
+      const data = await api('/api/intervention', {method: 'POST', body: JSON.stringify({message: text})});
+      $('nextPrompt').value = data.prompt;
+      $('interventionText').value = '';
+      await fullRefresh();
+    });
+    $('rawLogBtn').addEventListener('click', async () => {
+      const data = await api('/api/logs?limit=220');
+      $('artifactPreview').textContent = data.lines.join('\\n');
+      document.querySelector('[data-tab="artifacts"]').click();
+    });
+    $('reviewPromptBtn').addEventListener('click', async () => {
+      const data = await api('/api/review/prompt', {method: 'POST', body: JSON.stringify({
+        venue: $('venueInput').value,
+        draft_path: $('draftInput').value,
+        mode: $('reviewMode').value
+      })});
+      $('reviewPrompt').value = data.prompt;
+      await refreshArtifacts();
+    });
+    $('reviewRunBtn').addEventListener('click', async () => {
+      const data = await api('/api/review/start', {method: 'POST', body: JSON.stringify({
+        venue: $('venueInput').value,
+        draft_path: $('draftInput').value,
+        mode: $('reviewMode').value,
+        dry_run: $('dryRunInput').checked,
+        codex_bin: $('codexInput').value || 'codex'
+      })});
+      $('reviewPrompt').value = data.prompt;
+      await fullRefresh();
+    });
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        ['artifacts', 'figures', 'prompt'].forEach(name => $('tab-' + name).classList.toggle('hidden', name !== btn.dataset.tab));
+      });
+    });
+    fullRefresh();
+    setInterval(() => { refreshStatus(); refreshStream(); }, 2000);
+  </script>
+</body>
+</html>
+""".encode("utf-8")
+
+
 class PaperFactoryHandler(BaseHTTPRequestHandler):
     root: Path
     manager: JobManager
@@ -858,7 +1491,7 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
             path = parsed.path
             query = urllib.parse.parse_qs(parsed.query)
             if path == "/":
-                self.send_payload(index_html(), "text/html; charset=utf-8")
+                self.send_payload(index_html_cn(), "text/html; charset=utf-8")
             elif path == "/api/status":
                 payload = phase_payload(self.root)
                 payload["job"] = self.manager.snapshot()
@@ -867,9 +1500,15 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 limit = int(query.get("limit", ["120"])[0])
                 lines = []
                 lines.extend(read_tail(researchctl.log_path(self.root), limit))
+                lines.extend(read_tail(self.root / "logs" / "paperfactory-run.out", limit // 2))
                 lines.extend(read_tail(self.root / "logs" / "codex-loop.out", limit // 2))
                 lines.extend(read_tail(self.root / "logs" / "review.out", limit // 2))
                 self.send_json({"lines": lines[-limit:]})
+            elif path == "/api/stream":
+                limit = int(query.get("limit", ["120"])[0])
+                self.send_json({"messages": stream_messages(self.root, limit)})
+            elif path == "/api/interventions":
+                self.send_json({"text": read_interventions(self.root)})
             elif path == "/api/artifacts":
                 self.send_json({"files": list_artifacts(self.root)})
             elif path == "/api/figures":
@@ -908,6 +1547,11 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
             elif parsed.path == "/api/prompt":
                 prompt = write_next_prompt(self.root)
                 self.send_json({"prompt": prompt, "path": "next_prompt.md"})
+            elif parsed.path == "/api/intervention":
+                message = str(body.get("message") or "")
+                append_intervention(self.root, message)
+                prompt = write_next_prompt(self.root)
+                self.send_json({"ok": True, "prompt": prompt, "path": HUMAN_INTERVENTIONS})
             elif parsed.path == "/api/run/start":
                 ok, message = self.manager.start_loop(
                     self.root,
@@ -960,6 +1604,7 @@ def make_handler(root: Path, manager: JobManager) -> type[PaperFactoryHandler]:
     class BoundHandler(PaperFactoryHandler):
         pass
 
+    manager.root = root
     BoundHandler.root = root
     BoundHandler.manager = manager
     return BoundHandler

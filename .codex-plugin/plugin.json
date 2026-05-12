@@ -1,7 +1,7 @@
 {
   "name": "codex-paper-factory",
-  "version": "0.1.2",
-  "description": "Codex PaperFactory: long-horizon research automation with durable logs, phase gates, an interactive local Web UI, scientific figures, and conference-paper drafting checkpoints.",
+  "version": "0.1.3",
+  "description": "Codex PaperFactory: long-horizon research automation with durable logs, phase gates, a Chinese agent-style Web UI, scientific figures, and conference-paper drafting checkpoints.",
   "author": {
     "name": "happystander",
     "email": "research@example.invalid",
@@ -27,13 +27,14 @@
     "dashboard",
     "cli",
     "web-ui",
-    "auto-review"
+    "auto-review",
+    "human-in-the-loop"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex PaperFactory",
     "shortDescription": "Turn a research task into auditable experiments, figures, and paper drafts.",
-    "longDescription": "A Codex plugin for turning an initial research task into a long-running, auditable paper-production workflow: scope, literature survey, baseline matrix, data sanity, experiments, ablations, scientific figures, conference-paper drafting, internal review, an interactive local Web UI, and automated top-conference-style manuscript review.",
+    "longDescription": "A Codex plugin for turning an initial research task into a long-running, auditable paper-production workflow: scope, literature survey, baseline matrix, data sanity, experiments, ablations, scientific figures, conference-paper drafting, internal review, a Chinese agent-style local Web UI, detached background runs, human intervention notes, and automated top-conference-style manuscript review.",
     "developerName": "happystander",
     "category": "Research",
     "capabilities": [
@@ -44,7 +45,8 @@
       "Paper Review",
       "Dashboard",
       "Interactive UI",
-      "Automated Review"
+      "Automated Review",
+      "Human In The Loop"
     ],
     "websiteURL": "https://github.com/happystander/codex-PaperFactory",
     "privacyPolicyURL": "https://openai.com/policies/row-privacy-policy/",

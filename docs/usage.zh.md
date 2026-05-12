@@ -39,14 +39,18 @@
 /path/to/codex-PaperFactory/paperfactory web --open
 ```
 
-这个 UI 是本地 localhost 服务，不需要 Node。它支持：
+这个 UI 是本地 localhost 服务，不需要 Node，界面默认中文。它支持：
 
 - 一键启动/暂停 Codex 长跑循环；
-- 实时轮询 `.research/logs/research.log`、`codex-loop.out` 和 `review.out`；
+- 后台 detached 运行：网页或 Web UI 关掉后，已启动的后台任务仍继续跑；
+- 像智能体对话页一样展示 Codex CLI 的可见执行输出、工具日志和系统记录；
+- 人工介入聊天：消息写入 `.research/human_interventions.md`，下一轮 prompt 自动带上；
 - 编辑初始研究任务；
 - 浏览 `.research/` 下的论文、报告、实验和日志产物；
 - 查看 `.research/figures/` 下的图表；
 - 生成或运行“顶会审稿人”式自动审稿，使用 `manuscript-audit` skill，默认输出到 `.research/reviews/top_conference_review.md`。
+
+注意：人工介入对下一轮生效。如果当前 `codex exec` 已经在运行，而你希望立刻改变方向，请先暂停后台任务，再发送介入并重新启动。
 
 ## 多天无人值守
 

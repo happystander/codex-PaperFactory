@@ -123,11 +123,15 @@ Start a local control console:
 The Web UI runs on localhost and supports:
 
 - start/pause autonomous Codex cycles;
-- live polling of research and Codex logs;
+- detached background runs that keep going after the browser or Web UI is closed;
+- Chinese agent-style stream view for visible Codex CLI output, tool logs, and system records;
+- human intervention messages saved to `.research/human_interventions.md` and injected into the next prompt;
 - editing the initial task stored in `.research/task.md` and `.research/state.json`;
 - browsing `.research/` artifacts and previewing text files;
 - viewing generated figures under `.research/figures/`;
 - generating or running a top-conference-style review prompt through `manuscript-audit`.
+
+Human intervention notes are applied on the next cycle. If an active `codex exec` process is already running, pause and restart when the note must take effect immediately.
 
 ## Included Skills
 
