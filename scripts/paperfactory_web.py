@@ -185,12 +185,15 @@ def project_job_summary(root: Path) -> dict[str, Any]:
     status = str(job.get("status") or "idle") if job else "idle"
     if status == "running" and not running:
         status = "finished_or_stopped"
+    message = str(job.get("message") or "") if job else ""
+    if not running and status == "finished_or_stopped":
+        message = finished_job_message(job)
     return {
         "running": running,
         "pid": pid or None,
         "mode": job.get("mode") if job else None,
         "status": status,
-        "message": job.get("message") if job else "",
+        "message": message,
     }
 
 
@@ -505,6 +508,19 @@ def write_job(root: Path, payload: dict[str, Any]) -> None:
     path = job_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def fixed_cycle_job(job: dict[str, Any]) -> bool:
+    command = job.get("command")
+    return isinstance(command, list) and "--cycles" in [str(item) for item in command]
+
+
+def finished_job_message(job: dict[str, Any]) -> str:
+    if fixed_cycle_job(job):
+        return "已按设定轮数结束；轮数留空可持续运行"
+    if job.get("duration_minutes"):
+        return "已到达设定运行时长或后台任务已结束"
+    return "后台任务已结束"
 
 
 def pid_running(pid: int | None) -> bool:
@@ -1009,6 +1025,11 @@ class JobManager:
             else:
                 running = pid_running(pid)
             if job:
+                if not running and job.get("status") == "running":
+                    job["status"] = "finished_or_stopped"
+                    job["stopped_at"] = job.get("stopped_at") or datetime.now().astimezone().isoformat()
+                    job["message"] = finished_job_message(job)
+                    write_job(self.root, job)
                 descendants = process_descendants(pid) if running and pid else []
                 descendant_cmds = [process_cmdline(item) for item in descendants]
                 codex_active = any("codex" in cmd and "exec" in cmd for cmd in descendant_cmds)
@@ -1024,14 +1045,13 @@ class JobManager:
                 elif job.get("status") == "dry_run_complete":
                     health = "ready"
                     state_label = "演练完成"
+                elif job.get("status") == "finished_or_stopped":
+                    health = "ready"
+                    state_label = "已结束"
                 else:
                     health = "idle"
                     state_label = "未运行"
                 job["running"] = running
-                if not running and job.get("status") == "running":
-                    job["status"] = "finished_or_stopped"
-                    job["stopped_at"] = job.get("stopped_at") or datetime.now().astimezone().isoformat()
-                    write_job(self.root, job)
                 return {
                     "running": running,
                     "mode": job.get("mode"),
@@ -1104,10 +1124,13 @@ class JobManager:
         if duration_minutes is not None and duration_minutes > 0:
             until = datetime.now().astimezone() + timedelta(minutes=duration_minutes)
             cmd.extend(["--until", until.strftime("%Y-%m-%d %H:%M:%S")])
+            run_message = f"按时长运行中，约 {duration_minutes} 分钟后结束"
         elif cycles is None:
             cmd.extend(["--until", "2099-01-01 00:00:00"])
+            run_message = "持续运行中，关闭网页不影响进程"
         else:
             cmd.extend(["--cycles", str(max(1, int(cycles)))])
+            run_message = f"固定 {max(1, int(cycles))} 轮运行中，跑完会自动结束"
         handle = log_file.open("a", encoding="utf-8")
         handle.write(f"\n[{now()}] detached paperfactory run start: {' '.join(cmd)}\n")
         handle.flush()
@@ -1132,7 +1155,7 @@ class JobManager:
                 "completed": 0,
                 "last_rc": None,
                 "dry_run": False,
-                "message": "后台长跑中，关闭网页不影响进程",
+                "message": run_message,
                 "duration_minutes": duration_minutes,
                 "command": cmd,
                 "log": "logs/paperfactory-run.out",
@@ -1680,7 +1703,7 @@ def index_html() -> bytes:
           <h2>Run Control</h2>
           <div class="row">
             <label>Interval <input id="intervalInput" type="number" min="1" value="1800" style="width:110px"></label>
-            <label>Cycles <input id="cyclesInput" type="number" min="1" value="1" style="width:90px"></label>
+            <label>Cycles <input id="cyclesInput" type="number" min="1" placeholder="blank = continuous" style="width:150px"></label>
             <label>Codex <input id="codexInput" value="codex" style="width:130px"></label>
             <label><input id="dryRunInput" type="checkbox"> Dry run</label>
             <button class="primary" id="startBtn">Start</button>
@@ -2104,7 +2127,7 @@ def index_html_cn() -> bytes:
         <p class="muted">网页关闭后仍继续跑；重新打开会读取 PID 和日志。</p>
         <div class="control-grid" style="margin-top:10px">
           <label>间隔秒<input id="intervalInput" type="number" min="1" value="1800"></label>
-          <label>轮数<input id="cyclesInput" type="number" min="1" value="1"></label>
+          <label>轮数<input id="cyclesInput" type="number" min="1" placeholder="留空=持续"></label>
         </div>
         <div class="row" style="margin-top:8px">
           <label><input id="dryRunInput" type="checkbox"> 只演练</label>
@@ -2529,7 +2552,7 @@ def index_html_cn_v2() -> bytes:
         <p class="muted" id="runMessage" style="margin-top:6px"></p>
         <div class="grid2" style="margin-top:10px">
           <label>间隔秒<input id="intervalInput" type="number" min="1" value="1800"></label>
-          <label>轮数<input id="cyclesInput" type="number" min="1" value="1"></label>
+          <label>轮数<input id="cyclesInput" type="number" min="1" placeholder="留空=持续"></label>
           <label>运行分钟<input id="durationInput" type="number" min="1" placeholder="可选"></label>
           <label>Codex<input id="codexInput" value="codex"></label>
         </div>
@@ -2913,7 +2936,7 @@ def index_html_cn_v3() -> bytes:
         <h2>运行控制</h2>
         <div class="grid2">
           <label>间隔秒<input id="intervalInput" type="number" min="1" value="1800"></label>
-          <label>轮数<input id="cyclesInput" type="number" min="1" value="1"></label>
+          <label>轮数<input id="cyclesInput" type="number" min="1" placeholder="留空=持续"></label>
           <label>运行分钟<input id="durationInput" type="number" min="1" placeholder="可选"></label>
           <label>Codex<input id="codexInput" value="codex"></label>
         </div>
@@ -2922,6 +2945,7 @@ def index_html_cn_v3() -> bytes:
           <button class="primary" id="startBtn">启动</button>
           <button class="danger" id="stopBtn">暂停</button>
         </div>
+        <p class="tiny" style="margin-top:8px">默认持续运行；填写轮数时，跑完指定轮数会自动结束。</p>
       </section>
       <section class="memory">
         <h2>记忆</h2>
@@ -3446,7 +3470,7 @@ def index_html_cn_v3() -> bytes:
       const cycles = $('cyclesInput').value.trim();
       const duration = $('durationInput').value.trim();
       $('statusTitle').textContent = '正在启动后台任务';
-      $('statusSub').textContent = '启动后即使关闭网页也会继续运行';
+      $('statusSub').textContent = cycles || duration ? '按设定条件运行，结束后可再次启动' : '持续运行中，关闭网页不影响进程';
       try {
         await api('/api/run/start', {method: 'POST', body: JSON.stringify({
           interval: Number($('intervalInput').value || 1800),

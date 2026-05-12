@@ -35,6 +35,7 @@ def fetch_text(url: str) -> str:
 
 def main() -> int:
     assert paperfactory_web.project_slug("全模态 生成式推荐!") == "全模态-生成式推荐"
+    assert "轮数" in paperfactory_web.finished_job_message({"command": ["paperfactory", "run", "--cycles", "1"]})
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / ".research"
@@ -54,6 +55,8 @@ def main() -> int:
             assert "Codex 现在在做什么" in index
             assert "研究任务" in index
             assert "新建并切换" in index
+            assert "留空=持续" in index
+            assert "默认持续运行" in index
             assert "文件树" in index
             assert "treeFolder" in index
             assert "buildFileTree" in index
