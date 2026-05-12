@@ -514,6 +514,14 @@ def pid_running(pid: int | None) -> bool:
         os.kill(pid, 0)
     except OSError:
         return False
+    stat_path = Path(f"/proc/{pid}/stat")
+    if stat_path.exists():
+        try:
+            suffix = stat_path.read_text(encoding="utf-8", errors="ignore").rsplit(") ", 1)[1]
+            if suffix.split()[0] == "Z":
+                return False
+        except (IndexError, OSError):
+            pass
     return True
 
 
