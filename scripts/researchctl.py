@@ -59,6 +59,7 @@ PHASES: tuple[Phase, ...] = (
         gate="Survey covers recent papers, official repositories, datasets, leaderboards, checkpoint availability, protocol details, reproduction cost, and fairness risks.",
         prompt_focus=(
             "Search broadly using primary sources and verify recent or unstable facts.",
+            "Use paper-reader for source-grounded paper notes and citation-workflow for local bibliography/citation mapping.",
             "Record conceptual SOTA separately from reproducible SOTA.",
             "State the nearest prior work and the precise unsolved gap.",
         ),
@@ -159,10 +160,11 @@ PHASES: tuple[Phase, ...] = (
         key="paper_drafting",
         title="Paper Drafting",
         objective="Draft a paper and appendix from existing evidence only.",
-        required=("paper/paper_draft.md", "paper/appendix.md", "reports/paper_drafting.json"),
+        required=("paper/paper_draft.md", "paper/appendix.md", "paper/availability.md", "reports/paper_drafting.json"),
         gate="Draft cites artifact-backed evidence for each main claim and includes limitations and reproducibility details.",
         prompt_focus=(
             "Use the conference-paper-writing skill to build a claim-to-evidence map before prose.",
+            "Use citation-workflow for citation support checks, data-availability for availability wording, and academic-polishing for final language passes.",
             "Write from claims to evidence: every main claim needs a table, figure, theorem, or appendix artifact.",
             "Use cautious language for bounded or diagnostic evidence.",
             "Do not invent citations, results, or unavailable baselines.",
@@ -393,10 +395,16 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     focus_list = "\n".join(f"- {item}" for item in phase.prompt_focus)
     controller_cmd = f"python {shell_quote(controller)}"
     companion_skills = []
+    if phase.key == "survey":
+        companion_skills.extend(["paper-reader", "citation-workflow"])
     if phase.key == "paper_evidence":
-        companion_skills.append("scientific-figure")
+        companion_skills.extend(["scientific-figure", "citation-workflow", "data-availability"])
     if phase.key in {"paper_drafting", "internal_review"}:
         companion_skills.append("conference-paper-writing")
+    if phase.key == "paper_drafting":
+        companion_skills.extend(["academic-polishing", "latex-typst-paper", "citation-workflow", "data-availability"])
+    if phase.key == "internal_review":
+        companion_skills.extend(["manuscript-audit", "latex-typst-paper", "data-availability"])
     companion_text = (
         "\nCompanion skills to apply this phase:\n" + "\n".join(f"- {skill}" for skill in companion_skills)
         if companion_skills

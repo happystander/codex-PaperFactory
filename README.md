@@ -99,8 +99,16 @@ Chinese usage notes are in `docs/usage.zh.md`.
 ## Included Skills
 
 - `autonomous-research`: long-horizon research state machine and operating loop.
+- `paper-reader`: source-grounded paper reading notes, baseline facts, figure/table anchors.
+- `citation-workflow`: BibTeX/Zotero-exported library search, claim-to-citation support maps, LaTeX/Typst citation snippets.
 - `scientific-figure`: paper-ready figure contracts, source-data manifests, matplotlib style rules, captions, and export QA.
 - `conference-paper-writing`: conference-style paper drafting from evidence, table policy, limitations, reproducibility, and internal review checks.
+- `latex-typst-paper`: source-aware checks for LaTeX/Typst manuscripts, bibliography, figures, tables, pseudocode, labels, and venue formatting.
+- `academic-polishing`: claim-safe English/Chinese academic polishing, translation, title/abstract cleanup, and de-AI passes.
+- `data-availability`: data/code/model availability statements, FAIR metadata, repository plans, and source-data packages.
+- `manuscript-audit`: reviewer-style audit, submission gate, issue bundle, and revision roadmap.
+- `reviewer-response`: point-by-point response letters, response trackers, and manuscript change checklists.
+- `presentation-deck`: paper-sharing, lab meeting, conference talk, and PPT-ready storyboard generation.
 
 ## Plotting Utility
 
@@ -117,12 +125,36 @@ python /path/to/codex-PaperFactory/scripts/make_metric_plot.py \
 
 The plotting helper exports editable SVG/PDF and uses `.research/figures/source_data_manifest.json` as the traceability target in the workflow.
 
+## Citation Utility
+
+Search a local BibTeX or Zotero-exported library without extra dependencies:
+
+```bash
+python /path/to/codex-PaperFactory/scripts/bib_query.py \
+  --bib references.bib \
+  --query "vision language recommendation" \
+  --year-min 2022 \
+  --has doi \
+  --limit 10
+```
+
+## Manuscript Hygiene Utility
+
+Run a lightweight mechanical check before deeper review:
+
+```bash
+python /path/to/codex-PaperFactory/scripts/manuscript_check.py paper/paper_draft.md --format markdown
+python /path/to/codex-PaperFactory/scripts/manuscript_check.py main.tex --format latex
+python /path/to/codex-PaperFactory/scripts/manuscript_check.py main.typ --format typst
+```
+
 ## Safety And Evidence Rules
 
 - Do not invent citations, metrics, tables, figures, or experiment outcomes.
 - Mark proxy, smoke, and diagnostic comparisons explicitly.
 - Do not draft a paper before `paper_evidence` is complete.
 - Every paper figure needs source data, plotting script, caption logic, and manifest entry.
+- Every citation should map to a specific claim and support grade.
 - If protocols differ, mark the comparison diagnostic rather than final.
 
 ## Attribution

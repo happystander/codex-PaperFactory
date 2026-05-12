@@ -53,6 +53,14 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 
 - `scientific-figure`: 在 `paper_evidence` 阶段规划论文图、source data、caption 和导出格式。
 - `conference-paper-writing`: 在 `paper_drafting` 和 `internal_review` 阶段把证据转成会议论文表述、表格、限制和复现说明。
+- `paper-reader`: 在 `survey` 阶段做有 source anchor 的论文精读笔记。
+- `citation-workflow`: 管理 BibTeX/Zotero 导出的文献库，做 claim-to-citation 支撑映射。
+- `latex-typst-paper`: 检查 LaTeX/Typst 源码、引用、图表、伪代码、标签和投稿格式。
+- `academic-polishing`: 中英文论文润色、翻译、标题摘要优化和去 AI 腔。
+- `data-availability`: 写数据/代码/模型可用性声明、FAIR 元数据和 source data 清单。
+- `manuscript-audit`: 做审稿人式内审、投稿 gate 和 revision roadmap。
+- `reviewer-response`: 收到审稿意见后写逐点回复和修改清单。
+- `presentation-deck`: 把论文或研究证据整理成组会/汇报/答辩用 storyboard。
 
 快速生成一个指标图：
 
@@ -63,6 +71,16 @@ python /path/to/codex-PaperFactory/scripts/make_metric_plot.py \
   --y score \
   --output .research/figures/fig_main_metric \
   --formats svg,pdf
+```
+
+检索本地 BibTeX：
+
+```bash
+python /path/to/codex-PaperFactory/scripts/bib_query.py \
+  --bib references.bib \
+  --query "vision language recommendation" \
+  --year-min 2022 \
+  --has doi
 ```
 
 ## 关键原则

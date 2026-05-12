@@ -18,7 +18,12 @@
     "long-horizon",
     "scientific-figures",
     "conference-paper",
-    "paper-factory"
+    "paper-factory",
+    "citation",
+    "latex",
+    "typst",
+    "reviewer-response",
+    "data-availability"
   ],
   "skills": "./skills/",
   "interface": {
@@ -30,7 +35,9 @@
     "capabilities": [
       "Research",
       "Write",
-      "Long Running"
+      "Long Running",
+      "Citations",
+      "Paper Review"
     ],
     "websiteURL": "https://github.com/happystander/codex-PaperFactory",
     "privacyPolicyURL": "https://openai.com/policies/row-privacy-policy/",
@@ -38,7 +45,8 @@
     "defaultPrompt": [
       "Run autonomous research on this topic for one week.",
       "Resume the research project and advance the next gate.",
-      "Create paper-ready figures and a conference draft from evidence."
+      "Create paper-ready figures and a conference draft from evidence.",
+      "Audit my manuscript and prepare citation/data availability checks."
     ],
     "brandColor": "#2563EB"
   }
