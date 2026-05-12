@@ -124,13 +124,14 @@ The Web UI runs on localhost and supports:
 
 - start/pause autonomous Codex cycles;
 - detached background runs that keep going after the browser or Web UI is closed;
-- a concise Chinese agent-style page with a phase flow, left-side file tree, and task controls;
-- Codex-authored progress messages from `.research/progress/feed.jsonl`; the chat stream does not split or display raw logs;
+- a concise Chinese agent-style page with explicit running state, phase flow, left-side file tree, and task controls;
+- project switching across nearby `.research/` workspaces, with memory settings stored per research task;
+- Codex-authored progress messages from `.research/progress/feed.jsonl`; the chat stream does not synthesize progress, split on newlines, or display raw logs;
 - iteration time controls through cycle count, interval, and optional run duration;
 - selectable prompt memory for summary, logs, human interventions, and current artifacts;
 - human intervention messages saved to `.research/human_interventions.md` and injected into the next prompt;
 - editing the initial task stored in `.research/task.md` and `.research/state.json`;
-- browsing `.research/` artifacts and previewing text files;
+- browsing `.research/` artifacts from the file tree and opening a full-page preview for text, image, SVG, and PDF files;
 - viewing generated figures under `.research/figures/`;
 - automatic top-conference-style manuscript review in `internal_review` after paper drafting.
 

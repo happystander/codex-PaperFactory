@@ -40,13 +40,14 @@ It provides:
 
 - start/pause buttons for autonomous Codex cycles;
 - detached background execution, so a started run continues after the browser tab or Web UI server is closed;
-- a concise Chinese agent-style interface with a left-side file tree and a phase flow;
-- Codex-authored natural-language progress from `.research/progress/feed.jsonl`; raw logs remain available only for diagnostics;
+- a concise Chinese agent-style interface with explicit running state, PID, last activity, a left-side file tree, and a phase flow;
+- project switching across nearby `.research/` workspaces, so each research task can keep its own prompt memory settings;
+- Codex-authored natural-language progress from `.research/progress/feed.jsonl`; the chat area does not synthesize progress or render raw logs;
 - cycle count, interval, and optional run-duration controls;
 - memory switches for summary, logs, human interventions, and current artifacts;
 - human intervention messages saved to `.research/human_interventions.md` and injected into the next generated prompt;
 - task editing that updates both `.research/task.md` and `.research/state.json`;
-- artifact browsing and text preview for files under `.research/`;
+- artifact browsing with full-page preview for text, image, SVG, and PDF files under `.research/`;
 - figure browsing for `.svg`, `.pdf`, `.png`, `.jpg`, `.jpeg`, and `.webp` files under `.research/figures/`;
 - automatic `manuscript-audit` review in `internal_review` after paper drafting is complete.
 
@@ -60,7 +61,7 @@ The user-facing progress feed is:
 .research/progress/feed.jsonl
 ```
 
-Codex is instructed to append one JSON object per line with a natural-language `message`. The UI renders that feed directly.
+Codex is instructed to append one JSON object per line with a natural-language `message`. The UI renders that feed directly and shows an empty state until Codex writes an event.
 
 The automatic top-conference review is written during `internal_review`:
 

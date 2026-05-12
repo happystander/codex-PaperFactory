@@ -43,13 +43,14 @@
 
 - 一键启动/暂停 Codex 长跑循环；
 - 后台 detached 运行：网页或 Web UI 关掉后，已启动的后台任务仍继续跑；
-- 左侧简约文件树，中间自然语言进展流，上方阶段流程图；
-- 进展流来自 Codex 自己写入的 `.research/progress/feed.jsonl`，不再把原始日志按换行拆成聊天气泡；
+- 明确显示是否还在运行、PID、最后活动时间、左侧文件树和上方阶段流程图；
+- 可在附近 `.research/` 项目之间切换，每个研究任务保留自己的记忆配置；
+- 进展流来自 Codex 自己写入的 `.research/progress/feed.jsonl`，不生成伪进展，也不把原始日志按换行拆成聊天气泡；
 - 可控制轮数、间隔和总运行时长；
 - 可选择下一轮 prompt 读取哪些记忆：摘要、日志、人工介入、当前产物；
 - 人工介入聊天：消息写入 `.research/human_interventions.md`，下一轮 prompt 自动带上；
 - 编辑初始研究任务；
-- 浏览 `.research/` 下的论文、报告、实验和日志产物；
+- 通过左侧文件树浏览 `.research/` 下的论文、报告、实验和日志产物，并在独立页面大预览文本、图片、SVG 和 PDF；
 - 查看 `.research/figures/` 下的图表；
 - 论文生成后在 `internal_review` 阶段自动运行“顶会审稿人”式内审，默认输出到 `.research/reviews/top_conference_review.md`。
 

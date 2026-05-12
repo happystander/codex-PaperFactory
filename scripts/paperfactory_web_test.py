@@ -45,12 +45,21 @@ def main() -> int:
         try:
             index = fetch_text(base + "/")
             assert "PaperFactory" in index
-            assert "Codex 进展" in index
+            assert "运行状态" in index
+            assert "Codex 现在在做什么" in index
+            assert "研究任务" in index
             assert "文件树" in index
 
             status = fetch_json(base + "/api/status")
             assert status["phase"]["key"] == "scope"
             assert status["job"]["running"] is False
+            assert status["job"]["health"] == "idle"
+            assert status["job"]["state_label"]
+
+            projects = fetch_json(base + "/api/projects")
+            assert any(item["research_dir"] == str(root) and item["current"] for item in projects["projects"])
+            switched = fetch_json(base + "/api/project/switch", {"research_dir": str(root)})
+            assert switched["research_dir"] == str(root)
 
             fetch_json(base + "/api/task", {"task": "updated web smoke task"})
             status = fetch_json(base + "/api/status")
@@ -60,6 +69,8 @@ def main() -> int:
             assert "updated web smoke task" in prompt["prompt"]
             assert "progress/feed.jsonl" in prompt["prompt"]
             assert (root / "next_prompt.md").exists()
+            preview = fetch_text(base + "/preview?path=next_prompt.md")
+            assert "updated web smoke task" in preview
 
             intervention = fetch_json(base + "/api/intervention", {"message": "人工要求：优先检查引用真实性。"})
             assert intervention["ok"] is True
@@ -82,6 +93,7 @@ def main() -> int:
             assert status["job"]["running"] is False
             assert status["job"]["completed"] == 1
             assert status["job"]["detached"] is True
+            assert "last_activity" in status["job"]
 
             artifacts = fetch_json(base + "/api/artifacts")
             assert any(item["path"] == "next_prompt.md" for item in artifacts["files"])

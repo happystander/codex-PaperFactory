@@ -121,6 +121,104 @@ def file_tree(root: Path, max_files: int = 240) -> list[dict[str, Any]]:
     return rows
 
 
+def normalize_research_root(value: str | Path) -> Path:
+    path = Path(value).expanduser().resolve()
+    if path.name != ".research" and researchctl.state_path(path / ".research").exists():
+        path = path / ".research"
+    if not researchctl.state_path(path).exists():
+        raise ValueError(f"Research state not found: {researchctl.state_path(path)}")
+    return path
+
+
+def discover_projects(root: Path) -> list[dict[str, Any]]:
+    current = normalize_research_root(root)
+    workspace = current.parent.parent if current.name == ".research" else current.parent
+    candidates = [current]
+    if workspace.exists():
+        try:
+            children = sorted(workspace.iterdir(), key=lambda item: item.name.lower())
+        except OSError:
+            children = []
+        for child in children:
+            rd = child / ".research"
+            try:
+                available = rd.is_dir() and researchctl.state_path(rd).exists()
+            except OSError:
+                available = False
+            if available:
+                candidates.append(rd.resolve())
+    seen: set[str] = set()
+    projects: list[dict[str, Any]] = []
+    for rd in candidates:
+        key = str(rd.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            state = researchctl.load_state(rd)
+        except SystemExit:
+            continue
+        projects.append(
+            {
+                "name": rd.parent.name if rd.name == ".research" else rd.name,
+                "research_dir": str(rd),
+                "project_dir": str(rd.parent if rd.name == ".research" else rd),
+                "task": state.get("task", ""),
+                "phase": state.get("phase", ""),
+                "current": rd.resolve() == current.resolve(),
+            }
+        )
+    return projects
+
+
+def process_descendants(pid: int) -> list[int]:
+    children: dict[int, list[int]] = {}
+    for proc_dir in Path("/proc").iterdir() if Path("/proc").exists() else []:
+        if not proc_dir.name.isdigit():
+            continue
+        try:
+            stat = (proc_dir / "stat").read_text(encoding="utf-8", errors="ignore")
+            parts = stat.split()
+            if len(parts) > 4:
+                ppid = int(parts[3])
+                children.setdefault(ppid, []).append(int(proc_dir.name))
+        except (OSError, ValueError):
+            continue
+    found: list[int] = []
+    stack = list(children.get(pid, []))
+    while stack:
+        item = stack.pop()
+        found.append(item)
+        stack.extend(children.get(item, []))
+    return found
+
+
+def process_cmdline(pid: int) -> str:
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return ""
+    return raw.replace(b"\x00", b" ").decode("utf-8", errors="ignore").strip()
+
+
+def latest_activity(root: Path) -> dict[str, Any]:
+    paths = [
+        progress_feed_path(root),
+        researchctl.log_path(root),
+        root / "logs" / "paperfactory-run.out",
+        root / "logs" / "codex-loop.out",
+        root / "logs" / "review.out",
+        researchctl.state_path(root),
+    ]
+    existing = [path for path in paths if path.exists()]
+    if not existing:
+        return {"path": None, "at": None, "age_seconds": None}
+    latest = max(existing, key=lambda path: path.stat().st_mtime)
+    mtime = datetime.fromtimestamp(latest.stat().st_mtime).astimezone()
+    age = max(0, int((datetime.now().astimezone() - mtime).total_seconds()))
+    return {"path": latest.relative_to(root).as_posix(), "at": mtime.isoformat(), "age_seconds": age}
+
+
 def read_tail(path: Path, limit: int) -> list[str]:
     if not path.exists():
         return []
@@ -298,12 +396,7 @@ def write_memory_config(root: Path, config: dict[str, Any]) -> dict[str, bool]:
 def stream_messages(root: Path, limit: int = 120) -> list[dict[str, str]]:
     events = read_progress_feed(root, limit)
     if not events:
-        return [
-            {
-                "role": "system",
-                "text": "等待 Codex 写入进展。启动任务后，Codex 会把自然语言进展追加到 .research/progress/feed.jsonl。",
-            }
-        ]
+        return []
     return [
         {
             "role": str(event.get("role") or "agent"),
@@ -475,6 +568,7 @@ class JobManager:
         if self.root is not None:
             job = read_job(self.root)
             pid = int(job.get("pid") or 0) if job else 0
+            activity = latest_activity(self.root)
             with self.lock:
                 proc = self.process
             if proc is not None and proc.pid == pid:
@@ -482,6 +576,24 @@ class JobManager:
             else:
                 running = pid_running(pid)
             if job:
+                descendants = process_descendants(pid) if running and pid else []
+                descendant_cmds = [process_cmdline(item) for item in descendants]
+                codex_active = any("codex" in cmd and "exec" in cmd for cmd in descendant_cmds)
+                if running and codex_active:
+                    health = "active"
+                    state_label = "Codex 正在执行"
+                elif running:
+                    health = "waiting"
+                    state_label = "后台进程运行中，等待下一轮或等待 Codex 输出"
+                elif job.get("status") == "stopped":
+                    health = "stopped"
+                    state_label = "已暂停"
+                elif job.get("status") == "dry_run_complete":
+                    health = "ready"
+                    state_label = "演练完成"
+                else:
+                    health = "idle"
+                    state_label = "未运行"
                 job["running"] = running
                 if not running and job.get("status") == "running":
                     job["status"] = "finished_or_stopped"
@@ -498,9 +610,19 @@ class JobManager:
                     "message": job.get("message") or job.get("status") or "idle",
                     "current_pid": pid or None,
                     "detached": True,
+                    "health": health,
+                    "state_label": state_label,
+                    "codex_active": codex_active,
+                    "child_pids": descendants,
+                    "last_activity": activity,
                 }
         with self.lock:
-            return dict(self.status)
+            status = dict(self.status)
+        status.setdefault("health", "idle")
+        status.setdefault("state_label", "未运行")
+        status.setdefault("codex_active", False)
+        status.setdefault("last_activity", latest_activity(self.root) if self.root else {})
+        return status
 
     def start_loop(
         self,
@@ -805,6 +927,57 @@ def artifact_preview(root: Path, rel: str) -> dict[str, Any]:
     entry["encoding"] = "base64"
     entry["data"] = base64.b64encode(path.read_bytes()[:80_000]).decode("ascii")
     return entry
+
+
+def preview_html(root: Path, rel: str) -> bytes:
+    path = root / safe_rel_path(rel)
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(rel)
+    entry = file_entry(root, path)
+    safe_path = urllib.parse.quote(entry["path"])
+    title = entry["path"]
+    suffix = path.suffix.lower()
+    if suffix in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
+        body = f'<img class="image" src="/files/{safe_path}" alt="{title}">'
+    elif suffix == ".pdf":
+        body = f'<iframe class="pdf" src="/files/{safe_path}"></iframe>'
+    elif suffix in TEXT_EXTENSIONS or path.stat().st_size <= 500_000:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        body = f"<pre>{html_escape(text)}</pre>"
+    else:
+        body = f'<p>该文件不适合直接预览。</p><a href="/files/{safe_path}">打开或下载</a>'
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html_escape(title)}</title>
+  <style>
+    body {{ margin: 0; background: #f5f7fb; color: #182235; font-family: Inter, system-ui, sans-serif; }}
+    header {{ height: 56px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; background: #fff; border-bottom: 1px solid #d8dfeb; }}
+    a {{ color: #2563eb; text-decoration: none; }}
+    main {{ padding: 18px; }}
+    pre {{ margin: 0; padding: 18px; min-height: calc(100vh - 100px); white-space: pre-wrap; overflow-wrap: anywhere; background: #fff; border: 1px solid #d8dfeb; border-radius: 10px; line-height: 1.55; }}
+    .image {{ max-width: 100%; display: block; margin: 0 auto; background: #fff; border: 1px solid #d8dfeb; border-radius: 10px; }}
+    .pdf {{ width: 100%; height: calc(100vh - 100px); border: 1px solid #d8dfeb; border-radius: 10px; background: #fff; }}
+  </style>
+</head>
+<body>
+  <header><strong>{html_escape(title)}</strong><a href="/files/{safe_path}">原文件</a></header>
+  <main>{body}</main>
+</body>
+</html>
+""".encode("utf-8")
+
+
+def html_escape(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#39;")
+    )
 
 
 def index_html() -> bytes:
@@ -1966,6 +2139,391 @@ def index_html_cn_v2() -> bytes:
 """.encode("utf-8")
 
 
+def index_html_cn_v3() -> bytes:
+    return """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PaperFactory</title>
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --panel: rgba(255,255,255,.92);
+      --solid: #fff;
+      --line: #d8e0ed;
+      --text: #152033;
+      --muted: #64748b;
+      --blue: #2563eb;
+      --green: #0f8a5f;
+      --red: #b42318;
+      --amber: #a16207;
+      --soft-blue: #eaf1ff;
+      --shadow: 0 18px 45px rgba(15,23,42,.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(180deg, #f9fafb 0%, #eef2f7 58%, #e8eef5 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    header {
+      height: 64px;
+      padding: 0 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(216,224,237,.75);
+      background: rgba(255,255,255,.72);
+      backdrop-filter: blur(14px);
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+    h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
+    h2 { margin: 0 0 12px; font-size: 15px; letter-spacing: 0; }
+    p { margin: 0; }
+    button, input, textarea, select {
+      font: inherit;
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+    button { min-height: 34px; padding: 6px 11px; font-weight: 700; cursor: pointer; }
+    button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+    button.danger { background: var(--red); border-color: var(--red); color: #fff; }
+    button.ghost { background: transparent; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    input, select { min-height: 34px; padding: 6px 8px; width: 100%; }
+    input[type="checkbox"] { width: auto; min-height: auto; padding: 0; }
+    textarea { width: 100%; min-height: 84px; padding: 9px; resize: vertical; }
+    a { color: var(--blue); text-decoration: none; }
+    .muted { color: var(--muted); }
+    .app {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 16px;
+      padding: 16px;
+      max-width: 1560px;
+      margin: 0 auto;
+    }
+    .side, .main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    section, .hero {
+      background: var(--panel);
+      border: 1px solid rgba(216,224,237,.86);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+    section { padding: 14px; }
+    .hero { padding: 18px; }
+    .topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    .statusTitle { font-size: 28px; font-weight: 820; letter-spacing: 0; margin-top: 6px; }
+    .statusSub { color: var(--muted); margin-top: 6px; }
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 99px;
+      background: var(--muted);
+      box-shadow: 0 0 0 5px rgba(100,116,139,.13);
+      margin-top: 6px;
+      flex: 0 0 auto;
+    }
+    .dot.active { background: var(--green); box-shadow: 0 0 0 5px rgba(15,138,95,.14); }
+    .dot.waiting { background: var(--amber); box-shadow: 0 0 0 5px rgba(161,98,7,.14); }
+    .dot.stopped, .dot.error { background: var(--red); box-shadow: 0 0 0 5px rgba(180,35,24,.13); }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-top: 16px; }
+    .metric { padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.72); min-height: 72px; }
+    .label { font-size: 12px; color: var(--muted); }
+    .value { font-size: 17px; font-weight: 760; margin-top: 5px; overflow-wrap: anywhere; }
+    .flow { display: grid; grid-template-columns: repeat(10, minmax(88px,1fr)); gap: 7px; overflow-x: auto; }
+    .phase { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: #fff; font-size: 12px; min-height: 62px; }
+    .phase.current { border-color: var(--blue); background: var(--soft-blue); }
+    .phase.complete { border-color: #bce4d2; background: #effaf5; }
+    .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .row > input { flex: 1 1 180px; width: auto; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .projectSelect { margin-top: 8px; }
+    .tree { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fbfdff; }
+    .file { width: 100%; display: block; border: 0; border-bottom: 1px solid #edf2f7; border-radius: 0; background: transparent; text-align: left; font-size: 12px; font-weight: 550; overflow-wrap: anywhere; }
+    .file:hover { background: var(--soft-blue); }
+    .feed { min-height: 430px; max-height: calc(100vh - 445px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #fbfdff; padding: 14px; }
+    .empty { min-height: 170px; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 24px; }
+    .msg { display: grid; grid-template-columns: 56px minmax(0,1fr); gap: 10px; align-items: start; margin-bottom: 13px; }
+    .msg.human { grid-template-columns: minmax(0,1fr) 56px; }
+    .avatar { min-height: 28px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; background: var(--soft-blue); color: var(--blue); font-size: 12px; font-weight: 850; }
+    .human .avatar { grid-column: 2; background: #eaf7f1; color: var(--green); }
+    .bubble { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .human .bubble { grid-column: 1; grid-row: 1; background: #f2fbf6; }
+    .meta { margin-top: 7px; color: var(--muted); font-size: 12px; }
+    .composer { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 9px; margin-top: 10px; align-items: end; }
+    .memory label { display: flex; gap: 7px; align-items: center; color: var(--text); font-size: 13px; }
+    .memory input { width: auto; min-height: auto; }
+    .pill { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 760; background: #eef2f7; color: var(--muted); }
+    .pill.active { color: var(--green); background: #eaf7f1; }
+    .pill.waiting { color: var(--amber); background: #fff8e7; }
+    .pill.stopped { color: var(--red); background: #fff0ee; }
+    .notice { margin: 12px auto 0; max-width: 1560px; padding: 9px 14px; border: 1px solid #fed7aa; border-radius: 10px; background: #fff7ed; color: #9a3412; }
+    @media (max-width: 1050px) {
+      .app { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: 1fr 1fr; }
+      .flow { grid-template-columns: repeat(5, minmax(92px,1fr)); }
+      .feed { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>PaperFactory</h1>
+      <p class="muted" id="researchDir"></p>
+    </div>
+    <div class="row">
+      <span id="headerState" class="pill">状态读取中</span>
+      <button class="ghost" id="refreshBtn">刷新</button>
+    </div>
+  </header>
+  <div id="errorBar" class="notice" hidden></div>
+  <main class="app">
+    <aside class="side">
+      <section>
+        <h2>研究任务</h2>
+        <select id="projectSelect" class="projectSelect"></select>
+        <div class="row" style="margin-top:8px">
+          <input id="projectPathInput" placeholder="输入 .research 或项目目录路径">
+          <button id="switchPathBtn">切换</button>
+        </div>
+      </section>
+      <section>
+        <h2>运行控制</h2>
+        <div class="grid2">
+          <label>间隔秒<input id="intervalInput" type="number" min="1" value="1800"></label>
+          <label>轮数<input id="cyclesInput" type="number" min="1" value="1"></label>
+          <label>运行分钟<input id="durationInput" type="number" min="1" placeholder="可选"></label>
+          <label>Codex<input id="codexInput" value="codex"></label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <label><input id="dryRunInput" type="checkbox"> 只演练</label>
+          <button class="primary" id="startBtn">启动</button>
+          <button class="danger" id="stopBtn">暂停</button>
+        </div>
+      </section>
+      <section class="memory">
+        <h2>记忆</h2>
+        <label><input type="checkbox" id="memSummary"> 摘要</label>
+        <label><input type="checkbox" id="memLogs"> 日志</label>
+        <label><input type="checkbox" id="memHuman"> 人工介入</label>
+        <label><input type="checkbox" id="memArtifacts"> 当前产物</label>
+        <button id="saveMemoryBtn" style="margin-top:10px">保存</button>
+      </section>
+      <section>
+        <h2>文件树</h2>
+        <div class="tree" id="fileTree"></div>
+      </section>
+    </aside>
+    <div class="main">
+      <div class="hero">
+        <div class="topline">
+          <div class="row" style="align-items:flex-start">
+            <span id="statusDot" class="dot"></span>
+            <div>
+              <div class="label">运行状态</div>
+              <div class="statusTitle" id="statusTitle">正在读取</div>
+              <p class="statusSub" id="statusSub">请稍候</p>
+            </div>
+          </div>
+          <span id="jobMode" class="pill">-</span>
+        </div>
+        <div class="metrics">
+          <div class="metric"><div class="label">当前阶段</div><div class="value" id="phaseKey">-</div></div>
+          <div class="metric"><div class="label">阶段报告</div><div class="value" id="reportStatus">-</div></div>
+          <div class="metric"><div class="label">PID</div><div class="value" id="pidValue">-</div></div>
+          <div class="metric"><div class="label">最后活动</div><div class="value" id="lastActivity">-</div></div>
+        </div>
+      </div>
+      <section>
+        <h2>流程</h2>
+        <div class="flow" id="phaseFlow"></div>
+      </section>
+      <section>
+        <h2>Codex 现在在做什么</h2>
+        <p class="muted" style="margin-bottom:10px">这里显示 Codex 自己写入的自然语言进展；没有原始日志，也不会按换行拆消息。</p>
+        <div class="feed" id="feed"></div>
+        <div class="composer">
+          <textarea id="interventionText" placeholder="实时介入：输入你希望下一轮 Codex 采纳的新要求。需要立刻改变方向时先暂停。"></textarea>
+          <button class="primary" id="sendInterventionBtn">发送</button>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const roleName = {agent: 'Codex', human: '你', system: '系统'};
+
+    function setError(message) {
+      $('errorBar').hidden = !message;
+      $('errorBar').textContent = message || '';
+    }
+    async function api(path, options = {}) {
+      try {
+        const res = await fetch(path, {headers: {'content-type': 'application/json'}, ...options});
+        if (!res.ok) throw new Error(await res.text());
+        return await res.json();
+      } catch (err) {
+        setError(`连接或请求失败：${err.message || err}`);
+        throw err;
+      }
+    }
+    function esc(text) {
+      return String(text ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function ago(seconds) {
+      if (seconds === null || seconds === undefined) return '-';
+      if (seconds < 60) return `${seconds} 秒前`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
+      return `${Math.floor(seconds / 3600)} 小时前`;
+    }
+    function healthClass(health) {
+      if (health === 'active') return 'active';
+      if (health === 'waiting' || health === 'ready') return 'waiting';
+      if (health === 'stopped' || health === 'error') return 'stopped';
+      return '';
+    }
+    function renderStatus(data) {
+      $('researchDir').textContent = data.research_dir;
+      $('phaseKey').textContent = `${data.phase.key} · ${data.phase.title}`;
+      $('reportStatus').textContent = data.phase.report_status;
+      const job = data.job || {};
+      const health = job.health || 'idle';
+      const cls = healthClass(health);
+      $('statusDot').className = `dot ${cls}`;
+      $('headerState').className = `pill ${cls}`;
+      $('headerState').textContent = job.state_label || '未运行';
+      $('statusTitle').textContent = job.state_label || '未运行';
+      $('statusSub').textContent = job.message || '后台没有运行任务';
+      $('jobMode').textContent = job.mode || '无任务';
+      $('pidValue').textContent = job.current_pid || '-';
+      $('lastActivity').textContent = ago(job.last_activity && job.last_activity.age_seconds);
+      $('startBtn').disabled = !!job.running;
+      $('stopBtn').disabled = !job.running;
+      $('phaseFlow').innerHTML = data.phases.map(p =>
+        `<div class="phase ${p.status}"><strong>${p.index}. ${esc(p.key)}</strong><br><span>${esc(p.title)}</span></div>`
+      ).join('');
+    }
+    function renderFeed(data) {
+      if (!data.messages.length) {
+        $('feed').innerHTML = '<div class="empty">还没有 Codex 进展。启动后台任务后，这里会显示 Codex 自己写入的自然语言更新。</div>';
+        return;
+      }
+      $('feed').innerHTML = data.messages.map(m => {
+        const human = m.role === 'human';
+        const files = Array.isArray(m.files) && m.files.length ? `<div class="meta">产物：${m.files.map(esc).join(', ')}</div>` : '';
+        const meta = [m.phase, m.status].filter(Boolean).join(' · ');
+        return `<div class="msg ${human ? 'human' : ''}">
+          <span class="avatar">${roleName[m.role] || esc(m.role)}</span>
+          <div class="bubble">${esc(m.text)}${meta ? `<div class="meta">${esc(meta)}</div>` : ''}${files}</div>
+        </div>`;
+      }).join('');
+      $('feed').scrollTop = $('feed').scrollHeight;
+    }
+    async function refreshProjects() {
+      const data = await api('/api/projects');
+      $('projectSelect').innerHTML = data.projects.map(p =>
+        `<option value="${esc(p.research_dir)}" ${p.current ? 'selected' : ''}>${esc(p.name)} · ${esc(p.phase || '')}</option>`
+      ).join('');
+    }
+    async function refreshStatus() { renderStatus(await api('/api/status')); }
+    async function refreshFeed() { renderFeed(await api('/api/stream?limit=80')); }
+    async function refreshTree() {
+      const data = await api('/api/tree');
+      $('fileTree').innerHTML = data.files.map(f =>
+        `<button class="file" data-path="${esc(f.path)}" style="padding-left:${8 + f.depth * 14}px">${esc(f.path)}</button>`
+      ).join('') || '<p class="muted" style="padding:8px">暂无文件</p>';
+      document.querySelectorAll('.file[data-path]').forEach(el => {
+        el.addEventListener('click', () => window.open('/preview?path=' + encodeURIComponent(el.dataset.path), '_blank'));
+      });
+    }
+    async function refreshMemory() {
+      const mem = await api('/api/memory');
+      $('memSummary').checked = !!mem.summary;
+      $('memLogs').checked = !!mem.logs;
+      $('memHuman').checked = !!mem.human_interventions;
+      $('memArtifacts').checked = !!mem.artifact_index;
+    }
+    async function refreshAll() {
+      const results = await Promise.allSettled([refreshProjects(), refreshStatus(), refreshFeed(), refreshTree(), refreshMemory()]);
+      if (!results.some(item => item.status === 'rejected')) setError('');
+    }
+    async function switchProject(path) {
+      try {
+        await api('/api/project/switch', {method: 'POST', body: JSON.stringify({research_dir: path})});
+        await refreshAll();
+      } catch (err) {}
+    }
+    $('refreshBtn').addEventListener('click', refreshAll);
+    $('projectSelect').addEventListener('change', () => switchProject($('projectSelect').value));
+    $('switchPathBtn').addEventListener('click', () => {
+      const path = $('projectPathInput').value.trim();
+      if (path) switchProject(path);
+    });
+    $('startBtn').addEventListener('click', async () => {
+      const cycles = $('cyclesInput').value.trim();
+      const duration = $('durationInput').value.trim();
+      $('statusTitle').textContent = '正在启动后台任务';
+      $('statusSub').textContent = '启动后即使关闭网页也会继续运行';
+      try {
+        await api('/api/run/start', {method: 'POST', body: JSON.stringify({
+          interval: Number($('intervalInput').value || 1800),
+          cycles: cycles ? Number(cycles) : null,
+          duration_minutes: duration ? Number(duration) : null,
+          dry_run: $('dryRunInput').checked,
+          codex_bin: $('codexInput').value || 'codex'
+        })});
+        await refreshAll();
+      } catch (err) {}
+    });
+    $('stopBtn').addEventListener('click', async () => {
+      $('statusTitle').textContent = '正在暂停';
+      try {
+        await api('/api/run/stop', {method: 'POST', body: '{}'});
+        await refreshAll();
+      } catch (err) {}
+    });
+    $('sendInterventionBtn').addEventListener('click', async () => {
+      const message = $('interventionText').value.trim();
+      if (!message) return;
+      try {
+        await api('/api/intervention', {method: 'POST', body: JSON.stringify({message})});
+        $('interventionText').value = '';
+        await refreshAll();
+      } catch (err) {}
+    });
+    $('saveMemoryBtn').addEventListener('click', async () => {
+      try {
+        await api('/api/memory', {method: 'POST', body: JSON.stringify({
+          summary: $('memSummary').checked,
+          logs: $('memLogs').checked,
+          human_interventions: $('memHuman').checked,
+          artifact_index: $('memArtifacts').checked
+        })});
+        await refreshMemory();
+      } catch (err) {}
+    });
+    refreshAll();
+    setInterval(() => {
+      Promise.allSettled([refreshStatus(), refreshFeed(), refreshTree()]).then(results => {
+        if (!results.some(item => item.status === 'rejected')) setError('');
+      });
+    }, 2000);
+  </script>
+</body>
+</html>
+""".encode("utf-8")
+
+
 class PaperFactoryHandler(BaseHTTPRequestHandler):
     root: Path
     manager: JobManager
@@ -1992,11 +2550,13 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
             path = parsed.path
             query = urllib.parse.parse_qs(parsed.query)
             if path == "/":
-                self.send_payload(index_html_cn_v2(), "text/html; charset=utf-8")
+                self.send_payload(index_html_cn_v3(), "text/html; charset=utf-8")
             elif path == "/api/status":
                 payload = phase_payload(self.root)
                 payload["job"] = self.manager.snapshot()
                 self.send_json(payload)
+            elif path == "/api/projects":
+                self.send_json({"projects": discover_projects(self.root)})
             elif path == "/api/logs":
                 limit = int(query.get("limit", ["120"])[0])
                 lines = []
@@ -2021,6 +2581,9 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
             elif path == "/api/artifact":
                 rel = query.get("path", [""])[0]
                 self.send_json(artifact_preview(self.root, rel))
+            elif path == "/preview":
+                rel = query.get("path", [""])[0]
+                self.send_payload(preview_html(self.root, rel), "text/html; charset=utf-8")
             elif path.startswith("/files/"):
                 rel = safe_rel_path(path.removeprefix("/files/"))
                 file_path = self.root / rel
@@ -2049,6 +2612,13 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 (self.root / "task.md").write_text(f"# Initial Research Task\n\n{task}\n", encoding="utf-8")
                 researchctl.append_log(self.root, "Web UI task updated")
                 self.send_json({"ok": True})
+            elif parsed.path == "/api/project/switch":
+                new_root = normalize_research_root(str(body.get("research_dir") or ""))
+                type(self).root = new_root
+                self.manager.root = new_root
+                payload = phase_payload(new_root)
+                payload["job"] = self.manager.snapshot()
+                self.send_json(payload)
             elif parsed.path == "/api/prompt":
                 prompt = write_next_prompt(self.root)
                 self.send_json({"prompt": prompt, "path": "next_prompt.md"})
