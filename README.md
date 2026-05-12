@@ -34,24 +34,31 @@ If your Codex setup uses a local marketplace file, use `codex-marketplace.json` 
 From your target research project directory, initialize a research state:
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/researchctl.py init \
+/path/to/codex-PaperFactory/paperfactory new \
   --task "Develop a publishable method for ..."
 
-python /path/to/codex-PaperFactory/scripts/researchctl.py next-prompt
+/path/to/codex-PaperFactory/paperfactory prompt
 ```
 
 Then ask Codex to use the `autonomous-research` skill with the generated prompt.
 
+For a readable terminal panel and local HTML dashboard:
+
+```bash
+/path/to/codex-PaperFactory/paperfactory status --logs 8
+/path/to/codex-PaperFactory/paperfactory dashboard --open
+```
+
 For unattended multi-cycle work:
 
 ```bash
-bash /path/to/codex-PaperFactory/scripts/autonomous_loop.sh \
+/path/to/codex-PaperFactory/paperfactory run \
   --task "Develop a publishable method for ..." \
   --until "2026-05-15 10:00:00" \
   --interval 1800
 ```
 
-The loop calls `codex exec --full-auto --skip-git-repo-check` once per interval with a phase-specific prompt generated from `.research/state.json`.
+The runner calls `codex exec --full-auto --skip-git-repo-check` once per interval with a phase-specific prompt generated from `.research/state.json`.
 
 ## Workflow Phases
 
@@ -73,28 +80,35 @@ The controller advances only when required artifacts exist and the phase report 
 Check state:
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/researchctl.py status
+/path/to/codex-PaperFactory/paperfactory status
 ```
 
 Generate the next Codex prompt:
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/researchctl.py next-prompt
+/path/to/codex-PaperFactory/paperfactory prompt --copy
 ```
 
 Advance only when the current phase gate is satisfied:
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/researchctl.py advance
+/path/to/codex-PaperFactory/paperfactory advance
 ```
 
 Validate reports and state:
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/researchctl.py validate
+/path/to/codex-PaperFactory/paperfactory validate
 ```
 
-Chinese usage notes are in `docs/usage.zh.md`.
+Check local dependencies and generate the project UI:
+
+```bash
+/path/to/codex-PaperFactory/paperfactory doctor
+/path/to/codex-PaperFactory/paperfactory dashboard --open
+```
+
+Chinese usage notes are in `docs/usage.zh.md`; launcher and dashboard details are in `docs/local-ui.md`.
 
 ## Included Skills
 
@@ -115,7 +129,7 @@ Chinese usage notes are in `docs/usage.zh.md`.
 Generate a quick paper-style metric figure from CSV or JSON:
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/make_metric_plot.py \
+/path/to/codex-PaperFactory/paperfactory plot -- \
   --input metrics.csv \
   --x method \
   --y score \
@@ -130,7 +144,7 @@ The plotting helper exports editable SVG/PDF and uses `.research/figures/source_
 Search a local BibTeX or Zotero-exported library without extra dependencies:
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/bib_query.py \
+/path/to/codex-PaperFactory/paperfactory bib -- \
   --bib references.bib \
   --query "vision language recommendation" \
   --year-min 2022 \
@@ -143,9 +157,9 @@ python /path/to/codex-PaperFactory/scripts/bib_query.py \
 Run a lightweight mechanical check before deeper review:
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/manuscript_check.py paper/paper_draft.md --format markdown
-python /path/to/codex-PaperFactory/scripts/manuscript_check.py main.tex --format latex
-python /path/to/codex-PaperFactory/scripts/manuscript_check.py main.typ --format typst
+/path/to/codex-PaperFactory/paperfactory check -- paper/paper_draft.md --format markdown
+/path/to/codex-PaperFactory/paperfactory check -- main.tex --format latex
+/path/to/codex-PaperFactory/paperfactory check -- main.typ --format typst
 ```
 
 ## Safety And Evidence Rules

@@ -7,18 +7,33 @@
 在你的研究项目目录运行：
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/researchctl.py init \
+/path/to/codex-PaperFactory/paperfactory new \
   --task "你的初始研究任务"
 
-python /path/to/codex-PaperFactory/scripts/researchctl.py next-prompt
+/path/to/codex-PaperFactory/paperfactory prompt
 ```
 
-然后让 Codex 使用 `autonomous-research` skill 执行输出的下一步提示。
+`new` 会同时创建 `.research/`、`.research/next_prompt.md` 和 `.research/dashboard.html`。然后让 Codex 使用 `autonomous-research` skill 执行生成的下一步提示。
+
+日常查看状态和打开本地面板：
+
+```bash
+/path/to/codex-PaperFactory/paperfactory status --logs 8
+/path/to/codex-PaperFactory/paperfactory dashboard --open
+```
+
+如果需要检查本机依赖：
+
+```bash
+/path/to/codex-PaperFactory/paperfactory doctor
+```
+
+更多 launcher 和 dashboard 细节见 `docs/local-ui.md`。
 
 ## 多天无人值守
 
 ```bash
-bash /path/to/codex-PaperFactory/scripts/autonomous_loop.sh \
+/path/to/codex-PaperFactory/paperfactory run \
   --task "你的初始研究任务" \
   --until "2026-05-15 10:00:00" \
   --interval 1800
@@ -65,7 +80,7 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 快速生成一个指标图：
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/make_metric_plot.py \
+/path/to/codex-PaperFactory/paperfactory plot -- \
   --input metrics.csv \
   --x method \
   --y score \
@@ -76,11 +91,18 @@ python /path/to/codex-PaperFactory/scripts/make_metric_plot.py \
 检索本地 BibTeX：
 
 ```bash
-python /path/to/codex-PaperFactory/scripts/bib_query.py \
+/path/to/codex-PaperFactory/paperfactory bib -- \
   --bib references.bib \
   --query "vision language recommendation" \
   --year-min 2022 \
   --has doi
+```
+
+检查论文初稿：
+
+```bash
+/path/to/codex-PaperFactory/paperfactory check -- paper/paper_draft.md --format markdown
+/path/to/codex-PaperFactory/paperfactory check -- main.tex --format latex
 ```
 
 ## 关键原则

@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Smoke tests for the PaperFactory convenience launcher."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+CLI = ROOT / "scripts" / "paperfactory.py"
+
+
+def run(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, str(CLI), *args],
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+
+
+def main() -> int:
+    with tempfile.TemporaryDirectory() as tmp:
+        cwd = Path(tmp)
+        rd = cwd / ".research"
+
+        proc = run(["new", "--research-dir", str(rd), "--task", "launcher smoke task"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert (rd / "state.json").exists()
+        assert (rd / "next_prompt.md").exists()
+        assert (rd / "dashboard.html").exists()
+
+        proc = run(["status", "--research-dir", str(rd), "--json"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        status = json.loads(proc.stdout)
+        assert status["phase"] == "scope"
+        assert status["progress"]["total"] == 10
+
+        proc = run(["prompt", "--research-dir", str(rd)], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert "Wrote next prompt" in proc.stdout
+
+        proc = run(["dashboard", "--research-dir", str(rd)], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert "Wrote dashboard" in proc.stdout
+
+        proc = run(["run", "--research-dir", str(rd), "--once", "--dry-run"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert "Dry run" in proc.stdout
+
+    print("paperfactory launcher smoke tests passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

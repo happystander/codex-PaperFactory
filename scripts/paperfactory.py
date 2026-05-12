@@ -1,0 +1,634 @@
+#!/usr/bin/env python3
+"""Convenience launcher and local UI for Codex PaperFactory."""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import webbrowser
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import researchctl
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / "scripts"
+DEFAULT_PROMPT_FILE = "next_prompt.md"
+DEFAULT_DASHBOARD_FILE = "dashboard.html"
+
+
+def resolve_research_dir(value: str) -> Path:
+    return Path(value).expanduser().resolve()
+
+
+def status_label(path: Path) -> str:
+    return "OK" if path.exists() and path.stat().st_size > 0 else "MISSING"
+
+
+def phase_progress(phase_key: str) -> tuple[int, int]:
+    total = len(researchctl.PHASES)
+    if phase_key == "complete":
+        return total, total
+    for index, phase in enumerate(researchctl.PHASES, 1):
+        if phase.key == phase_key:
+            return index, total
+    return 0, total
+
+
+def progress_bar(done: int, total: int, width: int = 28) -> str:
+    filled = 0 if total <= 0 else round(width * done / total)
+    return "[" + "#" * filled + "." * (width - filled) + f"] {done}/{total}"
+
+
+def load_state_or_exit(root: Path) -> dict[str, Any]:
+    return researchctl.load_state(root)
+
+
+def recent_log_lines(root: Path, limit: int = 8) -> list[str]:
+    path = researchctl.log_path(root)
+    if not path.exists():
+        return []
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    return lines[-limit:]
+
+
+def relative_or_name(path: Path) -> str:
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
+
+
+def write_next_prompt(root: Path, output: Path | None = None) -> Path:
+    state = load_state_or_exit(root)
+    prompt = researchctl.build_next_prompt(root, state)
+    target = output or (root / DEFAULT_PROMPT_FILE)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(prompt, encoding="utf-8")
+    return target
+
+
+def copy_to_clipboard(text: str) -> bool:
+    candidates = [
+        ("pbcopy", []),
+        ("wl-copy", []),
+        ("xclip", ["-selection", "clipboard"]),
+        ("xsel", ["--clipboard", "--input"]),
+    ]
+    for cmd, extra in candidates:
+        if not shutil.which(cmd):
+            continue
+        proc = subprocess.run(
+            [cmd, *extra],
+            input=text,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return proc.returncode == 0
+    return False
+
+
+def command_new(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args.research_dir)
+    task = args.task
+    if not task and sys.stdin.isatty():
+        task = input("Initial research task: ").strip()
+    if not task:
+        raise SystemExit("--task is required in non-interactive use")
+
+    researchctl.command_init(argparse.Namespace(research_dir=str(root), task=task, force=args.force))
+    prompt_path = write_next_prompt(root)
+    dashboard_path = build_dashboard(root, args.dashboard_output)
+    print()
+    print("PaperFactory project is ready.")
+    print(f"- State: {root}")
+    print(f"- Prompt: {relative_or_name(prompt_path)}")
+    print(f"- Dashboard: {relative_or_name(dashboard_path)}")
+    print()
+    launcher = ROOT / "paperfactory"
+    print("Next commands:")
+    print(f"  {launcher} status --research-dir {root}")
+    print(f"  {launcher} run --once --research-dir {root}")
+    print(f"  {launcher} dashboard --open --research-dir {root}")
+    return 0
+
+
+def command_status(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args.research_dir)
+    state = load_state_or_exit(root)
+    phase = researchctl.current_phase(state)
+    phase_key = "complete" if phase is None else phase.key
+    done, total = phase_progress(phase_key)
+
+    if args.json:
+        payload = {
+            "research_dir": str(root),
+            "task": state.get("task", ""),
+            "phase": phase_key,
+            "progress": {"current": done, "total": total},
+            "updated_at": state.get("updated_at"),
+        }
+        if phase is not None:
+            payload["report_status"] = researchctl.report_status(root, phase)
+            payload["missing"] = researchctl.missing_required(root, phase)
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+
+    print("Codex PaperFactory")
+    print("=" * 19)
+    print(f"Research dir : {root}")
+    print(f"Task         : {state.get('task', '')}")
+    print(f"Updated      : {state.get('updated_at', 'unknown')}")
+    print(f"Progress     : {progress_bar(done, total)}")
+
+    if phase is None:
+        print("Phase        : complete")
+        return 0
+
+    report_status = researchctl.report_status(root, phase) or "missing"
+    missing = set(researchctl.missing_required(root, phase))
+    print(f"Phase        : {phase.key} - {phase.title}")
+    print(f"Report       : {report_status}")
+    print(f"Gate         : {phase.gate}")
+    print()
+    print("Artifacts")
+    for rel in phase.required:
+        marker = "MISSING" if rel in missing else "OK"
+        print(f"  {marker:7} {rel}")
+    print()
+    if missing:
+        print("Next action  : create the missing artifacts, then run ./paperfactory prompt")
+    else:
+        print("Next action  : run ./paperfactory advance or ./paperfactory run --once")
+
+    if args.logs:
+        print()
+        print("Recent Log")
+        for line in recent_log_lines(root, args.logs):
+            print(f"  {line}")
+    return 0
+
+
+def command_prompt(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args.research_dir)
+    output = Path(args.output).expanduser().resolve() if args.output else None
+    prompt_path = write_next_prompt(root, output)
+    prompt = prompt_path.read_text(encoding="utf-8")
+    if args.stdout:
+        print(prompt)
+    else:
+        print(f"Wrote next prompt: {relative_or_name(prompt_path)}")
+    if args.copy:
+        copied = copy_to_clipboard(prompt)
+        print("Copied to clipboard." if copied else "Clipboard tool not found; use the prompt file.")
+    return 0
+
+
+def file_link(root: Path, rel: str) -> str:
+    safe_rel = html.escape(rel)
+    return f'<a href="{safe_rel}">{safe_rel}</a>'
+
+
+def phase_rows(root: Path, current_key: str) -> str:
+    rows = []
+    completed = {item.get("phase") for item in load_state_or_exit(root).get("phase_history", [])}
+    for index, phase in enumerate(researchctl.PHASES, 1):
+        if phase.key in completed or current_key == "complete":
+            state = "complete"
+        elif phase.key == current_key:
+            state = "current"
+        else:
+            state = "pending"
+        rows.append(
+            "<tr>"
+            f"<td>{index}</td>"
+            f"<td><strong>{html.escape(phase.key)}</strong><br><span>{html.escape(phase.title)}</span></td>"
+            f'<td><span class="pill {state}">{state}</span></td>'
+            f"<td>{html.escape(phase.objective)}</td>"
+            "</tr>"
+        )
+    return "\n".join(rows)
+
+
+def artifact_rows(root: Path, phase: researchctl.Phase | None) -> str:
+    if phase is None:
+        return '<tr><td colspan="3">Workflow complete.</td></tr>'
+    rows = []
+    for rel in phase.required:
+        full = root / rel
+        label = status_label(full)
+        rows.append(
+            "<tr>"
+            f'<td><span class="pill {label.lower()}">{label}</span></td>'
+            f"<td>{file_link(root, rel)}</td>"
+            f"<td>{full.stat().st_size if full.exists() else 0}</td>"
+            "</tr>"
+        )
+    return "\n".join(rows)
+
+
+def build_dashboard_html(root: Path, state: dict[str, Any]) -> str:
+    phase = researchctl.current_phase(state)
+    phase_key = "complete" if phase is None else phase.key
+    done, total = phase_progress(phase_key)
+    missing_count = 0 if phase is None else len(researchctl.missing_required(root, phase))
+    report_status = "complete" if phase is None else (researchctl.report_status(root, phase) or "missing")
+    logs = recent_log_lines(root, 12)
+    log_items = "\n".join(f"<li>{html.escape(line)}</li>" for line in logs) or "<li>No log entries yet.</li>"
+    task = html.escape(str(state.get("task", "")))
+    phase_title = "Complete" if phase is None else html.escape(phase.title)
+    gate = "No active gate." if phase is None else html.escape(phase.gate)
+    updated = html.escape(str(state.get("updated_at", "unknown")))
+    launcher = html.escape(str(ROOT / "paperfactory"))
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Codex PaperFactory Dashboard</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --line: #d8dee8;
+      --text: #172033;
+      --muted: #5d6b82;
+      --blue: #2563eb;
+      --green: #0f8a5f;
+      --amber: #b7791f;
+      --red: #b42318;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }}
+    header {{
+      background: #ffffff;
+      border-bottom: 1px solid var(--line);
+    }}
+    main, .inner {{
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+    }}
+    .inner {{ padding: 22px 0; }}
+    h1 {{ margin: 0 0 6px; font-size: 28px; letter-spacing: 0; }}
+    h2 {{ margin: 0 0 12px; font-size: 18px; letter-spacing: 0; }}
+    p {{ margin: 0; }}
+    a {{ color: var(--blue); text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .muted {{ color: var(--muted); }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 18px 0;
+    }}
+    .metric, section {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }}
+    .metric {{ padding: 14px; min-height: 92px; }}
+    .metric .label {{ color: var(--muted); font-size: 12px; text-transform: uppercase; }}
+    .metric .value {{ font-size: 22px; font-weight: 700; margin-top: 8px; overflow-wrap: anywhere; }}
+    section {{ padding: 18px; margin: 16px 0; }}
+    .bar {{
+      width: 100%;
+      height: 12px;
+      border-radius: 999px;
+      background: #e8edf5;
+      overflow: hidden;
+      margin-top: 10px;
+    }}
+    .bar span {{
+      display: block;
+      height: 100%;
+      width: {0 if total == 0 else round(done * 100 / total)}%;
+      background: var(--blue);
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }}
+    th, td {{
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }}
+    th {{ font-size: 12px; color: var(--muted); text-transform: uppercase; }}
+    .pill {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }}
+    .pill.complete, .pill.ok {{ color: var(--green); background: #eaf7f1; border-color: #bce4d2; }}
+    .pill.current {{ color: var(--blue); background: #eaf1ff; border-color: #b8cdfd; }}
+    .pill.pending {{ color: var(--muted); background: #eef2f7; border-color: #d8dee8; }}
+    .pill.missing {{ color: var(--red); background: #fff0ee; border-color: #ffc9c2; }}
+    .commands {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }}
+    code {{
+      display: block;
+      padding: 10px;
+      border-radius: 6px;
+      background: #111827;
+      color: #f9fafb;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }}
+    ul {{ margin: 0; padding-left: 20px; }}
+    @media (max-width: 820px) {{
+      .grid, .commands {{ grid-template-columns: 1fr; }}
+      h1 {{ font-size: 24px; }}
+    }}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="inner">
+      <h1>Codex PaperFactory</h1>
+      <p class="muted">{task}</p>
+    </div>
+  </header>
+  <main>
+    <div class="grid">
+      <div class="metric"><div class="label">Phase</div><div class="value">{html.escape(phase_key)}</div></div>
+      <div class="metric"><div class="label">Status</div><div class="value">{html.escape(report_status)}</div></div>
+      <div class="metric"><div class="label">Progress</div><div class="value">{done}/{total}</div><div class="bar"><span></span></div></div>
+      <div class="metric"><div class="label">Missing Artifacts</div><div class="value">{missing_count}</div></div>
+    </div>
+    <section>
+      <h2>Current Gate</h2>
+      <p><strong>{phase_title}</strong></p>
+      <p class="muted">{gate}</p>
+      <p class="muted">Updated: {updated}</p>
+    </section>
+    <section>
+      <h2>Required Artifacts</h2>
+      <table>
+        <thead><tr><th>Status</th><th>Artifact</th><th>Bytes</th></tr></thead>
+        <tbody>{artifact_rows(root, phase)}</tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Workflow</h2>
+      <table>
+        <thead><tr><th>#</th><th>Phase</th><th>State</th><th>Objective</th></tr></thead>
+        <tbody>{phase_rows(root, phase_key)}</tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Recent Log</h2>
+      <ul>{log_items}</ul>
+    </section>
+    <section>
+      <h2>Commands</h2>
+      <div class="commands">
+        <code>{launcher} status --logs 8</code>
+        <code>{launcher} prompt --copy</code>
+        <code>{launcher} run --once</code>
+        <code>{launcher} dashboard --open</code>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
+"""
+
+
+def build_dashboard(root: Path, output: str | None = None) -> Path:
+    state = load_state_or_exit(root)
+    target = Path(output).expanduser().resolve() if output else root / DEFAULT_DASHBOARD_FILE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(build_dashboard_html(root, state), encoding="utf-8")
+    return target
+
+
+def command_dashboard(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args.research_dir)
+    target = build_dashboard(root, args.output)
+    print(f"Wrote dashboard: {relative_or_name(target)}")
+    if args.open:
+        webbrowser.open(target.as_uri())
+    return 0
+
+
+def parse_until(value: str) -> float:
+    try:
+        return datetime.fromisoformat(value).timestamp()
+    except ValueError as exc:
+        raise SystemExit("--until must be ISO-like, e.g. '2026-05-15 10:00:00'") from exc
+
+
+def run_codex_cycle(root: Path, codex_bin: str, dry_run: bool) -> int:
+    prompt_path = write_next_prompt(root)
+    prompt = prompt_path.read_text(encoding="utf-8")
+    if dry_run:
+        print(f"Dry run: wrote prompt to {relative_or_name(prompt_path)}")
+        return 0
+
+    log_file = root / "logs" / "codex-loop.out"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with log_file.open("a", encoding="utf-8") as handle:
+        handle.write(f"\n[{researchctl.now()}] PaperFactory cycle start\n")
+        proc = subprocess.run(
+            [codex_bin, "exec", "--full-auto", "--skip-git-repo-check", prompt],
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        handle.write(f"[{researchctl.now()}] PaperFactory cycle rc={proc.returncode}\n")
+    if proc.returncode != 0:
+        researchctl.append_log(root, f"Codex cycle failed: rc={proc.returncode}")
+    return int(proc.returncode)
+
+
+def command_run(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args.research_dir)
+    if not researchctl.state_path(root).exists():
+        if not args.task:
+            raise SystemExit(f"No {researchctl.state_path(root)} found. Provide --task to initialize.")
+        researchctl.command_init(argparse.Namespace(research_dir=str(root), task=args.task, force=False))
+
+    if args.once:
+        cycles = 1
+    elif args.cycles is not None:
+        cycles = args.cycles
+    elif args.until:
+        cycles = None
+    else:
+        cycles = 1
+
+    stop_at = parse_until(args.until) if args.until else None
+    completed = 0
+    while True:
+        if stop_at is not None and time.time() >= stop_at:
+            researchctl.append_log(root, f"Loop stop: reached until={args.until}")
+            break
+        if cycles is not None and completed >= cycles:
+            break
+        rc = run_codex_cycle(root, args.codex_bin, args.dry_run)
+        completed += 1
+        if args.dry_run or rc != 0:
+            return rc
+        if cycles is not None and completed >= cycles:
+            break
+        time.sleep(args.interval)
+    print(f"Completed {completed} cycle(s).")
+    return 0
+
+
+def command_advance(args: argparse.Namespace) -> int:
+    return researchctl.command_advance(argparse.Namespace(research_dir=args.research_dir, force=args.force))
+
+
+def command_validate(args: argparse.Namespace) -> int:
+    return researchctl.command_validate(argparse.Namespace(research_dir=args.research_dir))
+
+
+def command_doctor(args: argparse.Namespace) -> int:
+    del args
+    checks: list[tuple[str, str, str]] = []
+    checks.append(("python", "OK", sys.version.split()[0]))
+    checks.append(("plugin root", "OK" if (ROOT / ".codex-plugin" / "plugin.json").exists() else "ERROR", str(ROOT)))
+    for binary in ("git", "codex"):
+        found = shutil.which(binary)
+        checks.append((binary, "OK" if found else "WARN", found or "not found on PATH"))
+    try:
+        json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        checks.append(("plugin manifest", "OK", ".codex-plugin/plugin.json"))
+    except Exception as exc:
+        checks.append(("plugin manifest", "ERROR", str(exc)))
+    try:
+        import matplotlib  # type: ignore  # noqa: F401
+
+        checks.append(("matplotlib", "OK", "available for plot helper"))
+    except Exception:
+        checks.append(("matplotlib", "WARN", "not installed; plotting helper will fail"))
+
+    for name, status, detail in checks:
+        print(f"{status:5} {name:16} {detail}")
+    return 1 if any(status == "ERROR" for _, status, _ in checks) else 0
+
+
+def command_delegate(script_name: str, tool_args: list[str]) -> int:
+    if tool_args and tool_args[0] == "--":
+        tool_args = tool_args[1:]
+    if not tool_args:
+        tool_args = ["--help"]
+    script = SCRIPTS / script_name
+    return subprocess.call([sys.executable, str(script), *tool_args])
+
+
+def add_research_dir_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--research-dir",
+        default=argparse.SUPPRESS,
+        help="Research state directory",
+    )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Friendly CLI and local dashboard for Codex PaperFactory.")
+    parser.add_argument("--research-dir", default=researchctl.DEFAULT_RESEARCH_DIR, help="Research state directory")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    new = sub.add_parser("new", help="Initialize a project and generate prompt/dashboard files")
+    add_research_dir_arg(new)
+    new.add_argument("--task", help="Initial research task")
+    new.add_argument("--force", action="store_true", help="Overwrite existing state")
+    new.add_argument("--dashboard-output", help="Optional dashboard output path")
+    new.set_defaults(func=command_new)
+
+    status = sub.add_parser("status", help="Show a readable terminal status panel")
+    add_research_dir_arg(status)
+    status.add_argument("--json", action="store_true", help="Emit machine-readable status")
+    status.add_argument("--logs", type=int, default=0, help="Show the last N audit log lines")
+    status.set_defaults(func=command_status)
+
+    prompt = sub.add_parser("prompt", help="Write the next Codex prompt to .research/next_prompt.md")
+    add_research_dir_arg(prompt)
+    prompt.add_argument("--output", help="Prompt output path")
+    prompt.add_argument("--stdout", action="store_true", help="Print prompt content")
+    prompt.add_argument("--copy", action="store_true", help="Copy prompt to clipboard when a clipboard tool exists")
+    prompt.set_defaults(func=command_prompt)
+
+    dashboard = sub.add_parser("dashboard", help="Generate a static HTML project dashboard")
+    add_research_dir_arg(dashboard)
+    dashboard.add_argument("--output", help="Dashboard output path")
+    dashboard.add_argument("--open", action="store_true", help="Open dashboard in the default browser")
+    dashboard.set_defaults(func=command_dashboard)
+
+    run = sub.add_parser("run", help="Run one or more Codex autonomous cycles")
+    add_research_dir_arg(run)
+    run.add_argument("--task", help="Initial task if the research state does not exist")
+    run.add_argument("--once", action="store_true", help="Run one cycle")
+    run.add_argument("--cycles", type=int, help="Run a fixed number of cycles")
+    run.add_argument("--until", help="Run until local time, e.g. '2026-05-15 10:00:00'")
+    run.add_argument("--interval", type=int, default=1800, help="Seconds between cycles")
+    run.add_argument("--codex-bin", default=os.environ.get("CODEX_BIN", "codex"), help="Codex CLI executable")
+    run.add_argument("--dry-run", action="store_true", help="Only write the prompt; do not call Codex")
+    run.set_defaults(func=command_run)
+
+    advance = sub.add_parser("advance", help="Advance the current phase if the gate passes")
+    add_research_dir_arg(advance)
+    advance.add_argument("--force", action="store_true", help="Advance even if artifacts are missing")
+    advance.set_defaults(func=command_advance)
+
+    validate = sub.add_parser("validate", help="Validate state and phase reports")
+    add_research_dir_arg(validate)
+    validate.set_defaults(func=command_validate)
+
+    doctor = sub.add_parser("doctor", help="Check local PaperFactory dependencies")
+    doctor.set_defaults(func=command_doctor)
+
+    bib = sub.add_parser("bib", help="Run the BibTeX search helper through this launcher")
+    bib.add_argument("tool_args", nargs=argparse.REMAINDER)
+    bib.set_defaults(func=lambda args: command_delegate("bib_query.py", args.tool_args))
+
+    check = sub.add_parser("check", help="Run manuscript hygiene checks through this launcher")
+    check.add_argument("tool_args", nargs=argparse.REMAINDER)
+    check.set_defaults(func=lambda args: command_delegate("manuscript_check.py", args.tool_args))
+
+    plot = sub.add_parser("plot", help="Run the metric plotting helper through this launcher")
+    plot.add_argument("tool_args", nargs=argparse.REMAINDER)
+    plot.set_defaults(func=lambda args: command_delegate("make_metric_plot.py", args.tool_args))
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

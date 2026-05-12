@@ -1,7 +1,7 @@
 {
   "name": "codex-paper-factory",
-  "version": "0.1.0",
-  "description": "Codex PaperFactory: long-horizon research automation with durable logs, phase gates, scientific figures, and conference-paper drafting checkpoints.",
+  "version": "0.1.1",
+  "description": "Codex PaperFactory: long-horizon research automation with durable logs, phase gates, a local dashboard, scientific figures, and conference-paper drafting checkpoints.",
   "author": {
     "name": "happystander",
     "email": "research@example.invalid",
@@ -23,13 +23,15 @@
     "latex",
     "typst",
     "reviewer-response",
-    "data-availability"
+    "data-availability",
+    "dashboard",
+    "cli"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex PaperFactory",
     "shortDescription": "Turn a research task into auditable experiments, figures, and paper drafts.",
-    "longDescription": "A Codex plugin for turning an initial research task into a long-running, auditable paper-production workflow: scope, literature survey, baseline matrix, data sanity, experiments, ablations, scientific figures, conference-paper drafting, and internal review.",
+    "longDescription": "A Codex plugin for turning an initial research task into a long-running, auditable paper-production workflow: scope, literature survey, baseline matrix, data sanity, experiments, ablations, scientific figures, conference-paper drafting, internal review, and a lightweight local command/dashboard UI.",
     "developerName": "happystander",
     "category": "Research",
     "capabilities": [
@@ -37,7 +39,8 @@
       "Write",
       "Long Running",
       "Citations",
-      "Paper Review"
+      "Paper Review",
+      "Dashboard"
     ],
     "websiteURL": "https://github.com/happystander/codex-PaperFactory",
     "privacyPolicyURL": "https://openai.com/policies/row-privacy-policy/",
@@ -46,7 +49,8 @@
       "Run autonomous research on this topic for one week.",
       "Resume the research project and advance the next gate.",
       "Create paper-ready figures and a conference draft from evidence.",
-      "Audit my manuscript and prepare citation/data availability checks."
+      "Audit my manuscript and prepare citation/data availability checks.",
+      "Generate a PaperFactory dashboard and next-step prompt."
     ],
     "brandColor": "#2563EB"
   }

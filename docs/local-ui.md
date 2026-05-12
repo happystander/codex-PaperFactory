@@ -1,0 +1,47 @@
+# Local UI And Launcher
+
+PaperFactory includes a dependency-light launcher at the repository root:
+
+```bash
+/path/to/codex-PaperFactory/paperfactory --help
+```
+
+It wraps the lower-level scripts so daily operation does not require remembering Python file paths.
+
+## Common Flow
+
+```bash
+/path/to/codex-PaperFactory/paperfactory new --task "your research task"
+/path/to/codex-PaperFactory/paperfactory status --logs 8
+/path/to/codex-PaperFactory/paperfactory prompt --copy
+/path/to/codex-PaperFactory/paperfactory run --once
+/path/to/codex-PaperFactory/paperfactory dashboard --open
+```
+
+The generated dashboard is a static HTML file at:
+
+```text
+.research/dashboard.html
+```
+
+It shows the active phase, gate status, missing artifacts, phase progress, recent audit log entries, and the next operational commands.
+
+## Tool Wrappers
+
+The launcher also exposes the helper tools through one command:
+
+```bash
+/path/to/codex-PaperFactory/paperfactory bib -- --bib references.bib --query "retrieval augmented generation"
+/path/to/codex-PaperFactory/paperfactory check -- paper/paper_draft.md --format markdown
+/path/to/codex-PaperFactory/paperfactory plot -- --input metrics.csv --x method --y score --output .research/figures/main
+```
+
+The `--` separator is optional for positional inputs, but it keeps forwarded tool options visually separate from launcher options.
+
+## Diagnostics
+
+```bash
+/path/to/codex-PaperFactory/paperfactory doctor
+```
+
+`doctor` checks Python, the plugin manifest, Git, Codex CLI availability, and optional plotting support.
