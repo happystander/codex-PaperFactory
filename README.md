@@ -47,6 +47,7 @@ For a readable terminal panel and local HTML dashboard:
 ```bash
 /path/to/codex-PaperFactory/paperfactory status --logs 8
 /path/to/codex-PaperFactory/paperfactory dashboard --open
+/path/to/codex-PaperFactory/paperfactory web --open
 ```
 
 For unattended multi-cycle work:
@@ -106,9 +107,27 @@ Check local dependencies and generate the project UI:
 ```bash
 /path/to/codex-PaperFactory/paperfactory doctor
 /path/to/codex-PaperFactory/paperfactory dashboard --open
+/path/to/codex-PaperFactory/paperfactory web --open
 ```
 
 Chinese usage notes are in `docs/usage.zh.md`; launcher and dashboard details are in `docs/local-ui.md`.
+
+## Interactive Web UI
+
+Start a local control console:
+
+```bash
+/path/to/codex-PaperFactory/paperfactory web --open
+```
+
+The Web UI runs on localhost and supports:
+
+- start/pause autonomous Codex cycles;
+- live polling of research and Codex logs;
+- editing the initial task stored in `.research/task.md` and `.research/state.json`;
+- browsing `.research/` artifacts and previewing text files;
+- viewing generated figures under `.research/figures/`;
+- generating or running a top-conference-style review prompt through `manuscript-audit`.
 
 ## Included Skills
 

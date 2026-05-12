@@ -518,6 +518,22 @@ def command_log(args: argparse.Namespace) -> int:
     return researchctl.command_log(args)
 
 
+def command_web(args: argparse.Namespace) -> int:
+    cmd = [
+        sys.executable,
+        str(SCRIPTS / "paperfactory_web.py"),
+        "--research-dir",
+        args.research_dir,
+        "--host",
+        args.host,
+        "--port",
+        str(args.port),
+    ]
+    if args.open:
+        cmd.append("--open")
+    return subprocess.call(cmd)
+
+
 def command_doctor(args: argparse.Namespace) -> int:
     del args
     checks: list[tuple[str, str, str]] = []
@@ -615,6 +631,13 @@ def build_parser() -> argparse.ArgumentParser:
     log.add_argument("--blocker")
     log.add_argument("--next")
     log.set_defaults(func=command_log)
+
+    web = sub.add_parser("web", help="Start the interactive local Web UI")
+    add_research_dir_arg(web)
+    web.add_argument("--host", default="127.0.0.1", help="Bind host")
+    web.add_argument("--port", type=int, default=8765, help="Bind port")
+    web.add_argument("--open", action="store_true", help="Open in the default browser")
+    web.set_defaults(func=command_web)
 
     validate = sub.add_parser("validate", help="Validate state and phase reports")
     add_research_dir_arg(validate)

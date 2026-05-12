@@ -20,6 +20,7 @@
 ```bash
 /path/to/codex-PaperFactory/paperfactory status --logs 8
 /path/to/codex-PaperFactory/paperfactory dashboard --open
+/path/to/codex-PaperFactory/paperfactory web --open
 ```
 
 如果需要检查本机依赖：
@@ -29,6 +30,23 @@
 ```
 
 更多 launcher 和 dashboard 细节见 `docs/local-ui.md`。
+
+## 交互式 Web UI
+
+启动本地控制台：
+
+```bash
+/path/to/codex-PaperFactory/paperfactory web --open
+```
+
+这个 UI 是本地 localhost 服务，不需要 Node。它支持：
+
+- 一键启动/暂停 Codex 长跑循环；
+- 实时轮询 `.research/logs/research.log`、`codex-loop.out` 和 `review.out`；
+- 编辑初始研究任务；
+- 浏览 `.research/` 下的论文、报告、实验和日志产物；
+- 查看 `.research/figures/` 下的图表；
+- 生成或运行“顶会审稿人”式自动审稿，使用 `manuscript-audit` skill，默认输出到 `.research/reviews/top_conference_review.md`。
 
 ## 多天无人值守
 
