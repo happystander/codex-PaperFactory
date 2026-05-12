@@ -697,12 +697,49 @@ def phase_health(root: Path, phase: researchctl.Phase, *, status: str, active: b
     }
 
 
+def route_history_payload(state: dict[str, Any], limit: int = 20) -> list[dict[str, Any]]:
+    raw_routes: list[Any] = []
+    if isinstance(state.get("phase_routes"), list):
+        raw_routes.extend(state["phase_routes"])
+    elif isinstance(state.get("phase_history"), list):
+        raw_routes.extend(item.get("route") for item in state["phase_history"] if isinstance(item, dict) and item.get("route"))
+    routes: list[dict[str, Any]] = []
+    for item in raw_routes:
+        if not isinstance(item, dict):
+            continue
+        routes.append(
+            {
+                "decision": str(item.get("decision") or ""),
+                "from_phase": str(item.get("from_phase") or item.get("phase") or ""),
+                "target_phase": str(item.get("target_phase") or ""),
+                "resolved_next_phase": str(item.get("resolved_next_phase") or item.get("next_phase") or ""),
+                "reason": str(item.get("reason") or ""),
+                "confidence": item.get("confidence"),
+                "decided_at": str(item.get("decided_at") or item.get("completed_at") or ""),
+                "ignored": bool(item.get("ignored")),
+                "ignore_reason": str(item.get("ignore_reason") or ""),
+            }
+        )
+    return routes[-limit:]
+
+
 def phase_payload(root: Path) -> dict[str, Any]:
     state = researchctl.load_state(root)
     phase = researchctl.current_phase(state, root)
     phase_key = "complete" if phase is None else phase.key
     done, total = progress(root, phase_key)
-    history = {item.get("phase") for item in state.get("phase_history", [])}
+    history_entries = state.get("phase_history") if isinstance(state.get("phase_history"), list) else []
+    completed_counts: dict[str, int] = {}
+    for item in history_entries:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("phase") or "")
+        if key:
+            completed_counts[key] = completed_counts.get(key, 0) + 1
+    history = set(completed_counts)
+    routes = route_history_payload(state)
+    last_route = routes[-1] if routes else None
+    jump_count = sum(1 for item in routes if item.get("decision") not in ("", "advance"))
     phases = []
     workflow_rows = researchctl.workflow_config_for_ui(root)
     visible_index = 0
@@ -738,6 +775,9 @@ def phase_payload(root: Path) -> dict[str, Any]:
                 "insert_after": str(item.get("insert_after") or ""),
                 "prompt": str(item.get("prompt") or ""),
                 "status": status,
+                "completed_count": completed_counts.get(key, 0),
+                "active_visit_count": completed_counts.get(key, 0) + (1 if key == phase_key else 0),
+                "revisited": completed_counts.get(key, 0) > 0 and key == phase_key,
                 "page_url": f"/phase?key={urllib.parse.quote(key)}",
                 **health,
             }
@@ -779,9 +819,19 @@ def phase_payload(root: Path) -> dict[str, Any]:
             "missing": missing,
             "required": required,
             "page_url": f"/phase?key={urllib.parse.quote(phase_key)}",
+            "completed_count": completed_counts.get(phase_key, 0),
+            "active_visit_count": completed_counts.get(phase_key, 0) + (0 if phase_key == "complete" else 1),
+            "revisited": completed_counts.get(phase_key, 0) > 0 and phase_key != "complete",
         },
         "progress": {"current": done, "total": total},
         "phases": phases,
+        "route": last_route,
+        "routes": routes,
+        "route_summary": {
+            "total": len(routes),
+            "jumps": jump_count,
+            "last": last_route,
+        },
         "interventions": read_interventions(root),
     }
 
@@ -2667,6 +2717,7 @@ def index_html_cn_v3() -> bytes:
     .phase.current { border-color: var(--blue); background: var(--soft-blue); }
     .phase.complete { border-color: #bce4d2; background: #effaf5; }
     .phase.custom { border-color: #c4b5fd; background: #f5f3ff; }
+    .phase.revisited { box-shadow: inset 0 0 0 2px rgba(161,98,7,.18); }
     .phase.disabled { opacity:.48; background:#f8fafc; }
     .phase .phaseMeta { display:block; margin-top:5px; color:var(--muted); font-weight:600; }
     .workflowEditor { display:grid; gap:8px; margin-top:12px; }
@@ -2697,6 +2748,20 @@ def index_html_cn_v3() -> bytes:
     .memory input { width: auto; min-height: auto; }
     details { margin-top:10px; }
     summary { cursor:pointer; color:var(--muted); font-size:13px; }
+    .foldSection { padding:0; overflow:hidden; }
+    .foldSection details { margin:0; }
+    .foldHead { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px; color:var(--text); font-size:15px; font-weight:800; list-style:none; }
+    .foldHead::-webkit-details-marker { display:none; }
+    .foldHead::after { content:"收起"; color:var(--muted); font-size:12px; font-weight:700; }
+    details:not([open]) > .foldHead::after { content:"展开"; }
+    .foldBody { padding:0 14px 14px; }
+    .routePanel { border-color:#f3c36b; background:linear-gradient(180deg,#fffaf0 0%,rgba(255,255,255,.92) 100%); }
+    .routePanel.ignored { border-color:#fca5a5; background:linear-gradient(180deg,#fff1f2 0%,rgba(255,255,255,.92) 100%); }
+    .routeHeadline { font-size:17px; font-weight:840; margin-bottom:5px; }
+    .routeList { display:grid; gap:8px; margin-top:12px; }
+    .routeItem { display:grid; gap:4px; padding:9px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+    .routeItem strong { font-size:13px; }
+    .routeMeta { color:var(--muted); font-size:12px; }
     .quota { display: grid; gap: 9px; }
     .quotaHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .quotaValue { font-weight: 820; }
@@ -2790,9 +2855,13 @@ def index_html_cn_v3() -> bytes:
           <p class="muted" id="codexStatusMeta">等待读取 Codex session</p>
         </div>
       </section>
-      <section>
-        <h2>文件树</h2>
-        <div class="tree" id="fileTree"></div>
+      <section class="foldSection">
+        <details id="fileTreeDetails" open>
+          <summary class="foldHead"><span>文件树</span><span class="tiny" id="fileTreeCount">-</span></summary>
+          <div class="foldBody">
+            <div class="tree" id="fileTree"></div>
+          </div>
+        </details>
       </section>
     </aside>
     <div class="main">
@@ -2815,6 +2884,18 @@ def index_html_cn_v3() -> bytes:
           <div class="metric"><div class="label">最后活动</div><div class="value" id="lastActivity">-</div></div>
         </div>
       </div>
+      <section class="routePanel" id="routePanel" hidden>
+        <div class="row" style="justify-content:space-between">
+          <h2>阶段路由</h2>
+          <span class="pill waiting" id="routeCount">0 次</span>
+        </div>
+        <div class="routeHeadline" id="routeHeadline">暂无路由决策</div>
+        <p class="muted" id="routeSub"></p>
+        <details id="routeHistoryDetails">
+          <summary>查看路由历史</summary>
+          <div class="routeList" id="routeList"></div>
+        </details>
+      </section>
       <section>
         <div class="row" style="justify-content:space-between">
           <h2>流程</h2>
@@ -2826,8 +2907,13 @@ def index_html_cn_v3() -> bytes:
         </div>
         <p class="muted" style="margin-bottom:10px">主干阶段固定不可改；你可以在主干之间插入自己的阶段，并为每个自定义阶段写 Prompt。</p>
         <div class="flow" id="phaseFlow"></div>
-        <div class="lockNote">基础研究流程会始终保留：范围、综述、数据、基线、方法、实验、证据、写作和内审。自定义阶段只作为额外检查点插入。</div>
-        <div class="workflowEditor" id="workflowEditor"></div>
+        <details id="customPhaseDetails" open>
+          <summary class="foldHead"><span>自定义方法/阶段</span><span class="tiny" id="customPhaseCount">0 个</span></summary>
+          <div class="foldBody">
+            <div class="lockNote">基础研究流程会始终保留：范围、综述、数据、基线、方法、实验、证据、写作和内审。自定义阶段只作为额外检查点插入。</div>
+            <div class="workflowEditor" id="workflowEditor"></div>
+          </div>
+        </details>
       </section>
       <section>
         <h2>Codex 现在在做什么</h2>
@@ -2898,6 +2984,51 @@ def index_html_cn_v3() -> bytes:
       if (health === 'stopped' || health === 'error') return 'stopped';
       return '';
     }
+    function routeDecisionLabel(decision) {
+      return ({
+        advance: '前进',
+        repeat: '重做当前阶段',
+        jump_back: '跳回',
+        skip_next: '跳过下一阶段',
+        jump_to: '跳转',
+        skip_to: '跳转'
+      })[decision] || (decision || '路由');
+    }
+    function phaseLabel(key) {
+      const phase = workflowPhases.find(p => p.key === key);
+      return phase ? `${phase.title} (${phase.key})` : (key || '-');
+    }
+    function routeLine(route) {
+      const from = phaseLabel(route.from_phase);
+      const to = phaseLabel(route.resolved_next_phase || route.target_phase);
+      return `${routeDecisionLabel(route.decision)}：${from} -> ${to}`;
+    }
+    function renderRoutePanel(data) {
+      const routes = Array.isArray(data.routes) ? data.routes : [];
+      const panel = $('routePanel');
+      if (!routes.length) {
+        panel.hidden = true;
+        return;
+      }
+      const latest = routes[routes.length - 1];
+      panel.hidden = false;
+      panel.className = `routePanel ${latest.ignored ? 'ignored' : ''}`;
+      const summary = data.route_summary || {};
+      $('routeCount').textContent = `${summary.total || routes.length} 次路由 / ${summary.jumps || 0} 次跳转`;
+      const revisit = data.phase && data.phase.revisited ? `当前阶段第 ${data.phase.active_visit_count} 次进入。` : '';
+      $('routeHeadline').textContent = latest.ignored ? `路由建议被忽略：${routeLine(latest)}` : routeLine(latest);
+      $('routeSub').textContent = [latest.reason, latest.ignore_reason, revisit].filter(Boolean).join(' ');
+      $('routeList').innerHTML = routes.slice().reverse().map((route, index) => {
+        const confidence = route.confidence === null || route.confidence === undefined || route.confidence === '' ? '' : ` · 置信度 ${route.confidence}`;
+        const ignored = route.ignored ? ' · 已忽略' : '';
+        return `<div class="routeItem">
+          <strong>${esc(routes.length - index)}. ${esc(routeLine(route))}</strong>
+          <div class="routeMeta">${esc(route.decided_at || '')}${esc(confidence)}${esc(ignored)}</div>
+          ${route.reason ? `<div>${esc(route.reason)}</div>` : ''}
+          ${route.ignore_reason ? `<div class="routeMeta">${esc(route.ignore_reason)}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
     function applyMemoryProfile(profile) {
       const presets = {
         focused: {summary:true, logs:false, human_interventions:true, artifact_index:false},
@@ -2948,6 +3079,8 @@ def index_html_cn_v3() -> bytes:
     }
     function renderWorkflowEditor(phases) {
       workflowPhases = phases;
+      const customCount = phases.filter(p => p.kind === 'custom').length;
+      $('customPhaseCount').textContent = `${customCount} 个`;
       if (workflowDirty) return;
       const customs = phases.filter(p => p.kind === 'custom');
       if (!customs.length) {
@@ -3007,11 +3140,14 @@ def index_html_cn_v3() -> bytes:
       $('lastActivity').textContent = ago(job.last_activity && job.last_activity.age_seconds);
       $('startBtn').disabled = !!job.running;
       $('stopBtn').disabled = !job.running;
+      workflowPhases = data.phases || [];
       $('phaseFlow').innerHTML = data.phases.map(p => {
         const kindText = p.kind === 'custom' ? '自定义' : '主干';
-        return `<button class="phase ${p.status} ${p.kind === 'custom' ? 'custom' : ''}" data-url="${esc(p.page_url)}"><strong>${esc(p.index)}. ${esc(p.title)}</strong><span class="phaseMeta">${esc(kindText)} · ${esc(p.status_text || p.status)} · ${esc(p.present_count || 0)}/${esc(p.required_count || 0)}</span></button>`;
+        const visit = p.active_visit_count > 1 ? ` · 第${p.active_visit_count}次` : '';
+        return `<button class="phase ${p.status} ${p.kind === 'custom' ? 'custom' : ''} ${p.revisited ? 'revisited' : ''}" data-url="${esc(p.page_url)}"><strong>${esc(p.index)}. ${esc(p.title)}</strong><span class="phaseMeta">${esc(kindText)} · ${esc(p.status_text || p.status)} · ${esc(p.present_count || 0)}/${esc(p.required_count || 0)}${esc(visit)}</span></button>`;
       }).join('');
       document.querySelectorAll('.phase[data-url]').forEach(el => el.addEventListener('click', () => window.open(el.dataset.url, '_blank')));
+      renderRoutePanel(data);
       renderWorkflowEditor(data.phases);
     }
     function renderCodexStatus(data) {
@@ -3067,6 +3203,7 @@ def index_html_cn_v3() -> bytes:
     async function refreshFeed() { renderFeed(await api('/api/stream?limit=80')); }
     async function refreshTree() {
       const data = await api('/api/tree');
+      $('fileTreeCount').textContent = `${data.files.length} 个`;
       $('fileTree').innerHTML = data.files.map(f =>
         `<button class="file" data-path="${esc(f.path)}" style="padding-left:${8 + f.depth * 14}px">${esc(f.path)}</button>`
       ).join('') || '<p class="muted" style="padding:8px">暂无文件</p>';

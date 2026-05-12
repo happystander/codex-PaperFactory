@@ -50,9 +50,11 @@ def main() -> int:
             assert "Codex 现在在做什么" in index
             assert "研究任务" in index
             assert "文件树" in index
+            assert "阶段路由" in index
             assert "保存流程" in index
             assert "主干阶段固定" in index
             assert "添加阶段" in index
+            assert "自定义方法/阶段" in index
             assert "标准记忆" in index
 
             status = fetch_json(base + "/api/status")
@@ -97,6 +99,43 @@ def main() -> int:
             reset_workflow = fetch_json(base + "/api/workflow", {"reset": True})
             assert reset_workflow["phases"][0]["title"] == "Research Scope"
             assert all(item["kind"] == "base" for item in reset_workflow["phases"])
+
+            state = researchctl.load_state(root)
+            state["phase"] = "method_design"
+            state["phase_history"] = [
+                {"phase": "scope", "completed_at": "2026-05-12T09:00:00+00:00"},
+                {"phase": "survey", "completed_at": "2026-05-12T10:00:00+00:00"},
+                {"phase": "method_design", "completed_at": "2026-05-12T11:00:00+00:00"},
+            ]
+            state["phase_routes"] = [
+                {
+                    "decision": "jump_back",
+                    "from_phase": "method_smoke",
+                    "target_phase": "method_design",
+                    "resolved_next_phase": "method_design",
+                    "reason": "smoke test exposed a weak ablation plan",
+                    "confidence": 0.8,
+                    "decided_at": "2026-05-12T12:00:00+00:00",
+                },
+                {
+                    "decision": "repeat",
+                    "from_phase": "method_design",
+                    "target_phase": "",
+                    "resolved_next_phase": "method_design",
+                    "reason": "method design still needs another pass",
+                    "confidence": 0.7,
+                    "decided_at": "2026-05-12T13:00:00+00:00",
+                },
+            ]
+            researchctl.write_state(root, state)
+            routed = fetch_json(base + "/api/status")
+            assert routed["phase"]["key"] == "method_design"
+            assert routed["phase"]["revisited"] is True
+            assert routed["phase"]["active_visit_count"] == 2
+            assert routed["route_summary"]["total"] == 2
+            assert routed["route_summary"]["jumps"] == 2
+            assert routed["routes"][0]["decision"] == "jump_back"
+            assert routed["routes"][1]["decision"] == "repeat"
 
             projects = fetch_json(base + "/api/projects")
             assert any(item["research_dir"] == str(root) and item["current"] for item in projects["projects"])
