@@ -1,0 +1,45 @@
+{
+  "name": "codex-paper-factory",
+  "version": "0.1.0",
+  "description": "Codex PaperFactory: long-horizon research automation with durable logs, phase gates, scientific figures, and conference-paper drafting checkpoints.",
+  "author": {
+    "name": "happystander",
+    "email": "research@example.invalid",
+    "url": "https://github.com/happystander"
+  },
+  "homepage": "https://github.com/happystander/codex-PaperFactory",
+  "repository": "https://github.com/happystander/codex-PaperFactory",
+  "license": "GPL-3.0",
+  "keywords": [
+    "autonomous-research",
+    "codex",
+    "experiments",
+    "paper-writing",
+    "long-horizon",
+    "scientific-figures",
+    "conference-paper",
+    "paper-factory"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex PaperFactory",
+    "shortDescription": "Turn a research task into auditable experiments, figures, and paper drafts.",
+    "longDescription": "A Codex plugin for turning an initial research task into a long-running, auditable paper-production workflow: scope, literature survey, baseline matrix, data sanity, experiments, ablations, scientific figures, conference-paper drafting, and internal review.",
+    "developerName": "happystander",
+    "category": "Research",
+    "capabilities": [
+      "Research",
+      "Write",
+      "Long Running"
+    ],
+    "websiteURL": "https://github.com/happystander/codex-PaperFactory",
+    "privacyPolicyURL": "https://openai.com/policies/row-privacy-policy/",
+    "termsOfServiceURL": "https://openai.com/policies/row-terms-of-use/",
+    "defaultPrompt": [
+      "Run autonomous research on this topic for one week.",
+      "Resume the research project and advance the next gate.",
+      "Create paper-ready figures and a conference draft from evidence."
+    ],
+    "brandColor": "#2563EB"
+  }
+}
