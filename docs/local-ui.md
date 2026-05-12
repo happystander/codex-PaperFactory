@@ -14,6 +14,7 @@ It wraps the lower-level scripts so daily operation does not require remembering
 /path/to/codex-PaperFactory/paperfactory new --task "your research task"
 /path/to/codex-PaperFactory/paperfactory status --logs 8
 /path/to/codex-PaperFactory/paperfactory prompt --copy
+/path/to/codex-PaperFactory/paperfactory log --action "checked results" --outcome "ready for review"
 /path/to/codex-PaperFactory/paperfactory run --once
 /path/to/codex-PaperFactory/paperfactory dashboard --open
 ```

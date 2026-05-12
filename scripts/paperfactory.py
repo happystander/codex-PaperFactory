@@ -514,6 +514,10 @@ def command_validate(args: argparse.Namespace) -> int:
     return researchctl.command_validate(argparse.Namespace(research_dir=args.research_dir))
 
 
+def command_log(args: argparse.Namespace) -> int:
+    return researchctl.command_log(args)
+
+
 def command_doctor(args: argparse.Namespace) -> int:
     del args
     checks: list[tuple[str, str, str]] = []
@@ -602,6 +606,15 @@ def build_parser() -> argparse.ArgumentParser:
     add_research_dir_arg(advance)
     advance.add_argument("--force", action="store_true", help="Advance even if artifacts are missing")
     advance.set_defaults(func=command_advance)
+
+    log = sub.add_parser("log", help="Append a structured audit log entry")
+    add_research_dir_arg(log)
+    log.add_argument("--action")
+    log.add_argument("--rationale")
+    log.add_argument("--outcome")
+    log.add_argument("--blocker")
+    log.add_argument("--next")
+    log.set_defaults(func=command_log)
 
     validate = sub.add_parser("validate", help="Validate state and phase reports")
     add_research_dir_arg(validate)

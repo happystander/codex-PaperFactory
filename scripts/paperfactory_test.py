@@ -50,6 +50,10 @@ def main() -> int:
         assert proc.returncode == 0, proc.stderr
         assert "Wrote dashboard" in proc.stdout
 
+        proc = run(["log", "--research-dir", str(rd), "--action", "launcher test", "--outcome", "ok"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert "launcher test" in (rd / "logs" / "research.log").read_text(encoding="utf-8")
+
         proc = run(["run", "--research-dir", str(rd), "--once", "--dry-run"], cwd)
         assert proc.returncode == 0, proc.stderr
         assert "Dry run" in proc.stdout
