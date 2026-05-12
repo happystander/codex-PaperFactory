@@ -2731,9 +2731,15 @@ def index_html_cn_v3() -> bytes:
     .row > input { flex: 1 1 180px; width: auto; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
     .projectSelect { margin-top: 8px; }
-    .tree { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fbfdff; }
-    .file { width: 100%; display: block; border: 0; border-bottom: 1px solid #edf2f7; border-radius: 0; background: transparent; text-align: left; font-size: 12px; font-weight: 550; overflow-wrap: anywhere; }
+    .tree { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fbfdff; padding:4px 0; }
+    .treeFolder { margin:0; }
+    .treeFolder summary { min-height:30px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 8px; color:var(--text); font-size:12px; font-weight:760; border-bottom:1px solid #edf2f7; cursor:pointer; }
+    .treeFolder summary:hover { background:var(--soft-blue); }
+    .treeCount { color:var(--muted); font-size:11px; font-weight:700; }
+    .file { width: 100%; min-height:30px; display: flex; align-items:center; justify-content:space-between; gap:8px; border: 0; border-bottom: 1px solid #edf2f7; border-radius: 0; background: transparent; text-align: left; font-size: 12px; font-weight: 550; overflow-wrap: anywhere; }
     .file:hover { background: var(--soft-blue); }
+    .fileName { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .fileKind { color:var(--muted); font-size:11px; flex:0 0 auto; }
     .feed { min-height: 430px; max-height: calc(100vh - 445px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: #fbfdff; padding: 14px; }
     .empty { min-height: 170px; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 24px; }
     .msg { display: grid; grid-template-columns: 56px minmax(0,1fr); gap: 10px; align-items: start; margin-bottom: 13px; }
@@ -2931,6 +2937,8 @@ def index_html_cn_v3() -> bytes:
     const roleName = {agent: 'Codex', human: '你', system: '系统'};
     let workflowDirty = false;
     let workflowPhases = [];
+    let treeInitialized = false;
+    const openTreeFolders = new Set();
 
     function setError(message) {
       $('errorBar').hidden = !message;
@@ -3028,6 +3036,44 @@ def index_html_cn_v3() -> bytes:
           ${route.ignore_reason ? `<div class="routeMeta">${esc(route.ignore_reason)}</div>` : ''}
         </div>`;
       }).join('');
+    }
+    function buildFileTree(files) {
+      const root = {path: '', name: '', dirs: new Map(), files: []};
+      (files || []).forEach(file => {
+        const parts = String(file.path || '').split('/').filter(Boolean);
+        if (!parts.length) return;
+        let node = root;
+        let currentPath = '';
+        parts.slice(0, -1).forEach(part => {
+          currentPath = currentPath ? `${currentPath}/${part}` : part;
+          if (!node.dirs.has(part)) node.dirs.set(part, {path: currentPath, name: part, dirs: new Map(), files: []});
+          node = node.dirs.get(part);
+        });
+        node.files.push(file);
+      });
+      return root;
+    }
+    function treeFileCount(node) {
+      let total = node.files.length;
+      node.dirs.forEach(child => { total += treeFileCount(child); });
+      return total;
+    }
+    function renderTreeChildren(node, depth) {
+      const dirs = Array.from(node.dirs.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const files = node.files.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      const folderHtml = dirs.map(dir => renderTreeFolder(dir, depth)).join('');
+      const fileHtml = files.map(file => {
+        const name = file.name || String(file.path || '').split('/').pop() || file.path;
+        return `<button class="file" data-path="${esc(file.path)}" title="${esc(file.path)}" style="padding-left:${8 + depth * 14}px"><span class="fileName">${esc(name)}</span><span class="fileKind">${esc(file.kind || 'file')}</span></button>`;
+      }).join('');
+      return folderHtml + fileHtml;
+    }
+    function renderTreeFolder(dir, depth) {
+      const open = openTreeFolders.has(dir.path) ? 'open' : '';
+      return `<details class="treeFolder" data-path="${esc(dir.path)}" ${open}>
+        <summary style="padding-left:${8 + depth * 14}px"><span>${esc(dir.name)}</span><span class="treeCount">${treeFileCount(dir)}</span></summary>
+        ${renderTreeChildren(dir, depth + 1)}
+      </details>`;
     }
     function applyMemoryProfile(profile) {
       const presets = {
@@ -3204,9 +3250,22 @@ def index_html_cn_v3() -> bytes:
     async function refreshTree() {
       const data = await api('/api/tree');
       $('fileTreeCount').textContent = `${data.files.length} 个`;
-      $('fileTree').innerHTML = data.files.map(f =>
-        `<button class="file" data-path="${esc(f.path)}" style="padding-left:${8 + f.depth * 14}px">${esc(f.path)}</button>`
-      ).join('') || '<p class="muted" style="padding:8px">暂无文件</p>';
+      if (!data.files.length) {
+        $('fileTree').innerHTML = '<p class="muted" style="padding:8px">暂无文件</p>';
+        return;
+      }
+      const tree = buildFileTree(data.files);
+      if (!treeInitialized) {
+        tree.dirs.forEach(dir => openTreeFolders.add(dir.path));
+        treeInitialized = true;
+      }
+      $('fileTree').innerHTML = renderTreeChildren(tree, 0);
+      document.querySelectorAll('.treeFolder[data-path]').forEach(el => {
+        el.addEventListener('toggle', () => {
+          if (el.open) openTreeFolders.add(el.dataset.path);
+          else openTreeFolders.delete(el.dataset.path);
+        });
+      });
       document.querySelectorAll('.file[data-path]').forEach(el => {
         el.addEventListener('click', () => window.open('/preview?path=' + encodeURIComponent(el.dataset.path), '_blank'));
       });
@@ -3227,6 +3286,8 @@ def index_html_cn_v3() -> bytes:
     async function switchProject(path) {
       try {
         await api('/api/project/switch', {method: 'POST', body: JSON.stringify({research_dir: path})});
+        openTreeFolders.clear();
+        treeInitialized = false;
         await refreshAll();
       } catch (err) {}
     }

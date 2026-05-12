@@ -50,6 +50,8 @@ def main() -> int:
             assert "Codex 现在在做什么" in index
             assert "研究任务" in index
             assert "文件树" in index
+            assert "treeFolder" in index
+            assert "buildFileTree" in index
             assert "阶段路由" in index
             assert "保存流程" in index
             assert "主干阶段固定" in index
