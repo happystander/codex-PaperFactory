@@ -58,6 +58,15 @@ def main() -> int:
         assert proc.returncode == 0, proc.stderr
         assert "Dry run" in proc.stdout
 
+        fake_codex = cwd / "fake_codex.sh"
+        fake_codex.write_text("#!/usr/bin/env bash\nprintf 'FAKE_CODEX_CWD=%s\\n' \"$PWD\"\n", encoding="utf-8")
+        fake_codex.chmod(0o755)
+        proc = run(["run", "--research-dir", str(rd), "--once", "--codex-bin", str(fake_codex)], ROOT)
+        assert proc.returncode == 0, proc.stderr
+        codex_log = (rd / "logs" / "codex-loop.out").read_text(encoding="utf-8")
+        assert f"Codex workdir: {cwd}" in codex_log
+        assert f"FAKE_CODEX_CWD={cwd}" in codex_log
+
     print("paperfactory launcher smoke tests passed")
     return 0
 

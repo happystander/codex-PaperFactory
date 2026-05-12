@@ -77,6 +77,12 @@ def write_next_prompt(root: Path, output: Path | None = None) -> Path:
     return target
 
 
+def codex_workdir(root: Path) -> Path:
+    if root.name == ".research":
+        return root.parent
+    return root
+
+
 def copy_to_clipboard(text: str) -> bool:
     candidates = [
         ("pbcopy", []),
@@ -458,10 +464,14 @@ def run_codex_cycle(root: Path, codex_bin: str, dry_run: bool) -> int:
 
     log_file = root / "logs" / "codex-loop.out"
     log_file.parent.mkdir(parents=True, exist_ok=True)
+    workdir = codex_workdir(root)
+    workdir.mkdir(parents=True, exist_ok=True)
     with log_file.open("a", encoding="utf-8") as handle:
         handle.write(f"\n[{researchctl.now()}] PaperFactory cycle start\n")
+        handle.write(f"[{researchctl.now()}] Codex workdir: {workdir}\n")
         proc = subprocess.run(
             [codex_bin, "exec", "--full-auto", "--skip-git-repo-check", prompt],
+            cwd=workdir,
             stdout=handle,
             stderr=subprocess.STDOUT,
             text=True,
