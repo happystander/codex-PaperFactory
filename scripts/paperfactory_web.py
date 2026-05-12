@@ -2517,6 +2517,20 @@ def index_html_cn_v2() -> bytes:
     function esc(text) {
       return String(text ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
+    function formatMessageTime(ts) {
+      if (!ts) return '';
+      const date = new Date(ts);
+      if (Number.isNaN(date.getTime())) return String(ts);
+      return date.toLocaleString('zh-CN', {
+        hour12: false,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
     function renderStatus(data) {
       $('researchDir').textContent = data.research_dir;
       $('phaseKey').textContent = data.phase.key;
@@ -2532,16 +2546,21 @@ def index_html_cn_v2() -> bytes:
       ).join('');
     }
     function renderFeed(data) {
+      const feed = $('feed');
+      const bottomOffset = feed.scrollHeight - feed.scrollTop;
+      const shouldFollow = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
       $('feed').innerHTML = data.messages.map(m => {
         const human = m.role === 'human';
         const files = Array.isArray(m.files) && m.files.length ? `<div class="meta">产物：${m.files.map(esc).join(', ')}</div>` : '';
-        const meta = [m.phase, m.status].filter(Boolean).join(' · ');
+        const time = formatMessageTime(m.ts);
+        const meta = [m.phase, m.status, time ? `时间 ${time}` : ''].filter(Boolean).join(' · ');
         return `<div class="msg ${human ? 'human' : ''}">
           <span class="avatar">${roleName[m.role] || m.role}</span>
           <div class="bubble">${esc(m.text)}${meta ? `<div class="meta">${esc(meta)}</div>` : ''}${files}</div>
         </div>`;
       }).join('');
-      $('feed').scrollTop = $('feed').scrollHeight;
+      if (shouldFollow) feed.scrollTop = feed.scrollHeight;
+      else feed.scrollTop = Math.max(0, feed.scrollHeight - bottomOffset);
     }
     async function refreshStatus() { renderStatus(await api('/api/status')); }
     async function refreshFeed() { renderFeed(await api('/api/stream?limit=80')); }
@@ -2957,6 +2976,20 @@ def index_html_cn_v3() -> bytes:
     function esc(text) {
       return String(text ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
+    function formatMessageTime(ts) {
+      if (!ts) return '';
+      const date = new Date(ts);
+      if (Number.isNaN(date.getTime())) return String(ts);
+      return date.toLocaleString('zh-CN', {
+        hour12: false,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
     function ago(seconds) {
       if (seconds === null || seconds === undefined) return '-';
       if (seconds < 60) return `${seconds} 秒前`;
@@ -3223,20 +3256,25 @@ def index_html_cn_v3() -> bytes:
       $('codexStatusMeta').textContent = `${source} · 更新 ${ago(data.age_seconds)} · total ${compactNumber(total.total_tokens)} tokens${reset ? ' · ' + reset : ''}`;
     }
     function renderFeed(data) {
+      const feed = $('feed');
       if (!data.messages.length) {
-        $('feed').innerHTML = '<div class="empty">还没有 Codex 进展。启动后台任务后，这里会显示 Codex 自己写入的自然语言更新。</div>';
+        feed.innerHTML = '<div class="empty">还没有 Codex 进展。启动后台任务后，这里会显示 Codex 自己写入的自然语言更新。</div>';
         return;
       }
-      $('feed').innerHTML = data.messages.map(m => {
+      const bottomOffset = feed.scrollHeight - feed.scrollTop;
+      const shouldFollow = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
+      feed.innerHTML = data.messages.map(m => {
         const human = m.role === 'human';
         const files = Array.isArray(m.files) && m.files.length ? `<div class="meta">产物：${m.files.map(esc).join(', ')}</div>` : '';
-        const meta = [m.phase, m.status].filter(Boolean).join(' · ');
+        const time = formatMessageTime(m.ts);
+        const meta = [m.phase, m.status, time ? `时间 ${time}` : ''].filter(Boolean).join(' · ');
         return `<div class="msg ${human ? 'human' : ''}">
           <span class="avatar">${roleName[m.role] || esc(m.role)}</span>
           <div class="bubble">${esc(m.text)}${meta ? `<div class="meta">${esc(meta)}</div>` : ''}${files}</div>
         </div>`;
       }).join('');
-      $('feed').scrollTop = $('feed').scrollHeight;
+      if (shouldFollow) feed.scrollTop = feed.scrollHeight;
+      else feed.scrollTop = Math.max(0, feed.scrollHeight - bottomOffset);
     }
     async function refreshProjects() {
       const data = await api('/api/projects');

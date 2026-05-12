@@ -58,6 +58,8 @@ def main() -> int:
             assert "添加阶段" in index
             assert "自定义方法/阶段" in index
             assert "标准记忆" in index
+            assert "formatMessageTime" in index
+            assert "时间 ${time}" in index
 
             status = fetch_json(base + "/api/status")
             assert status["phase"]["key"] == "scope"
@@ -230,6 +232,7 @@ def main() -> int:
             assert any(item["path"] == "next_prompt.md" for item in tree["files"])
             stream = fetch_json(base + "/api/stream?limit=80")
             assert any("优先检查引用真实性" in item["text"] for item in stream["messages"])
+            assert all("ts" in item for item in stream["messages"])
 
             fake_codex = Path(tmp) / "fake_codex.sh"
             fake_codex.write_text("#!/usr/bin/env bash\necho fake codex visible output\nsleep 8\n", encoding="utf-8")
