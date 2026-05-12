@@ -42,6 +42,7 @@ It provides:
 - detached background execution, so a started run continues after the browser tab or Web UI server is closed;
 - a concise Chinese agent-style interface with explicit running state, PID, last activity, a left-side file tree, and a phase flow;
 - project switching across nearby `.research/` workspaces, so each research task can keep its own prompt memory settings;
+- Codex status monitoring from `~/.codex/sessions`, including active-session quota, reset time, context window, and token usage;
 - Codex-authored natural-language progress from `.research/progress/feed.jsonl`; the chat area does not synthesize progress or render raw logs;
 - cycle count, interval, and optional run-duration controls;
 - memory switches for summary, logs, human interventions, and current artifacts;

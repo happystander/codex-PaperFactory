@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 import tempfile
 import threading
@@ -60,6 +61,48 @@ def main() -> int:
             assert any(item["research_dir"] == str(root) and item["current"] for item in projects["projects"])
             switched = fetch_json(base + "/api/project/switch", {"research_dir": str(root)})
             assert switched["research_dir"] == str(root)
+
+            session = Path(tmp) / ".codex" / "sessions" / "2026" / "05" / "12" / "rollout-test.jsonl"
+            session.parent.mkdir(parents=True, exist_ok=True)
+            session.write_text(
+                json.dumps(
+                    {
+                        "timestamp": "2026-05-12T09:00:00Z",
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "token_count",
+                            "info": {
+                                "model_context_window": 258400,
+                                "total_token_usage": {"total_tokens": 12345, "input_tokens": 10000},
+                                "last_token_usage": {"total_tokens": 456, "output_tokens": 123},
+                            },
+                            "rate_limits": {
+                                "plan_type": "prolite",
+                                "primary": {"used_percent": 25.5, "window_minutes": 300, "resets_at": 1778593065},
+                                "secondary": {"used_percent": 60, "window_minutes": 10080, "resets_at": 1778639106},
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            old_home = os.environ.get("HOME")
+            os.environ["HOME"] = tmp
+            try:
+                codex = fetch_json(base + "/api/codex/status")
+            finally:
+                if old_home is None:
+                    os.environ.pop("HOME", None)
+                else:
+                    os.environ["HOME"] = old_home
+            assert codex["available"] is True
+            assert codex["source"] == "latest"
+            assert codex["plan_type"] == "prolite"
+            assert codex["primary"]["remaining_percent"] == 74.5
+            assert codex["secondary"]["remaining_percent"] == 40.0
+            assert codex["model_context_window"] == 258400
 
             fetch_json(base + "/api/task", {"task": "updated web smoke task"})
             status = fetch_json(base + "/api/status")

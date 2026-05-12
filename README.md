@@ -126,6 +126,7 @@ The Web UI runs on localhost and supports:
 - detached background runs that keep going after the browser or Web UI is closed;
 - a concise Chinese agent-style page with explicit running state, phase flow, left-side file tree, and task controls;
 - project switching across nearby `.research/` workspaces, with memory settings stored per research task;
+- Codex status monitoring from `~/.codex/sessions`, including short-window and long-window remaining rate-limit percentages;
 - Codex-authored progress messages from `.research/progress/feed.jsonl`; the chat stream does not synthesize progress, split on newlines, or display raw logs;
 - iteration time controls through cycle count, interval, and optional run duration;
 - selectable prompt memory for summary, logs, human interventions, and current artifacts;

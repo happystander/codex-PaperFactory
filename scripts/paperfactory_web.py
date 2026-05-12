@@ -201,6 +201,180 @@ def process_cmdline(pid: int) -> str:
     return raw.replace(b"\x00", b" ").decode("utf-8", errors="ignore").strip()
 
 
+def process_session_paths(pid: int) -> list[Path]:
+    fd_dir = Path(f"/proc/{pid}/fd")
+    if not fd_dir.exists():
+        return []
+    paths: list[Path] = []
+    try:
+        fds = list(fd_dir.iterdir())
+    except OSError:
+        return []
+    for fd in fds:
+        try:
+            target = os.readlink(fd)
+        except OSError:
+            continue
+        if "/.codex/sessions/" not in target or not target.endswith(".jsonl"):
+            continue
+        path = Path(target)
+        if path.exists() and path.is_file():
+            paths.append(path)
+    return paths
+
+
+def active_codex_session_paths(root: Path) -> list[Path]:
+    job = read_job(root)
+    pid = int(job.get("pid") or 0) if job else 0
+    if not pid_running(pid):
+        return []
+    paths: list[Path] = []
+    for item in [pid, *process_descendants(pid)]:
+        paths.extend(process_session_paths(item))
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for path in paths:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
+def latest_codex_session_paths(limit: int = 1) -> list[Path]:
+    session_root = Path.home() / ".codex" / "sessions"
+    if not session_root.exists():
+        return []
+    try:
+        files = [path for path in session_root.rglob("*.jsonl") if path.is_file()]
+    except OSError:
+        return []
+    files.sort(key=path_mtime, reverse=True)
+    return files[:limit]
+
+
+def path_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def read_recent_lines(path: Path, max_bytes: int = 600_000) -> list[str]:
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            start = max(0, size - max_bytes)
+            handle.seek(start)
+            raw = handle.read()
+    except OSError:
+        return []
+    if start > 0 and b"\n" in raw:
+        raw = raw.split(b"\n", 1)[1]
+    return raw.decode("utf-8", errors="ignore").splitlines()
+
+
+def parse_event_timestamp(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return None
+
+
+def rate_limit_payload(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    used = raw.get("used_percent")
+    try:
+        used_percent = float(used)
+    except (TypeError, ValueError):
+        used_percent = None
+    remaining = None if used_percent is None else max(0.0, 100.0 - used_percent)
+    resets_at = raw.get("resets_at")
+    reset_iso = None
+    reset_in_seconds = None
+    if isinstance(resets_at, (int, float)):
+        reset_time = datetime.fromtimestamp(float(resets_at)).astimezone()
+        reset_iso = reset_time.isoformat()
+        reset_in_seconds = max(0, int((reset_time - datetime.now().astimezone()).total_seconds()))
+    return {
+        "used_percent": used_percent,
+        "remaining_percent": remaining,
+        "window_minutes": raw.get("window_minutes"),
+        "resets_at": reset_iso,
+        "reset_in_seconds": reset_in_seconds,
+    }
+
+
+def token_usage_payload(raw: dict[str, Any] | None) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    keys = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens")
+    payload: dict[str, int] = {}
+    for key in keys:
+        value = raw.get(key)
+        if isinstance(value, int):
+            payload[key] = value
+    return payload
+
+
+def codex_session_status(path: Path, source: str) -> dict[str, Any]:
+    token_event: dict[str, Any] | None = None
+    for line in reversed(read_recent_lines(path)):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        payload = event.get("payload") if isinstance(event, dict) else None
+        if isinstance(payload, dict) and payload.get("type") == "token_count":
+            token_event = event
+            break
+    if token_event is None:
+        return {
+            "available": False,
+            "source": source,
+            "session_path": str(path),
+            "message": "没有在 Codex session 中找到 token_count 事件",
+        }
+    payload = token_event.get("payload") or {}
+    info = payload.get("info") if isinstance(payload, dict) else {}
+    rate_limits = payload.get("rate_limits") if isinstance(payload, dict) else {}
+    updated = parse_event_timestamp(str(token_event.get("timestamp") or ""))
+    age = None if updated is None else max(0, int((datetime.now().astimezone() - updated).total_seconds()))
+    return {
+        "available": True,
+        "source": source,
+        "session_path": str(path),
+        "updated_at": updated.isoformat() if updated else str(token_event.get("timestamp") or ""),
+        "age_seconds": age,
+        "plan_type": rate_limits.get("plan_type") if isinstance(rate_limits, dict) else None,
+        "primary": rate_limit_payload(rate_limits.get("primary") if isinstance(rate_limits, dict) else None),
+        "secondary": rate_limit_payload(rate_limits.get("secondary") if isinstance(rate_limits, dict) else None),
+        "model_context_window": info.get("model_context_window") if isinstance(info, dict) else None,
+        "total_token_usage": token_usage_payload(info.get("total_token_usage") if isinstance(info, dict) else None),
+        "last_token_usage": token_usage_payload(info.get("last_token_usage") if isinstance(info, dict) else None),
+    }
+
+
+def codex_status(root: Path) -> dict[str, Any]:
+    paths = active_codex_session_paths(root)
+    source = "active"
+    if not paths:
+        paths = latest_codex_session_paths()
+        source = "latest"
+    if not paths:
+        return {
+            "available": False,
+            "source": "none",
+            "message": "没有找到 Codex session 文件",
+        }
+    paths.sort(key=path_mtime, reverse=True)
+    return codex_session_status(paths[0], source)
+
+
 def latest_activity(root: Path) -> dict[str, Any]:
     paths = [
         progress_feed_path(root),
@@ -2262,6 +2436,13 @@ def index_html_cn_v3() -> bytes:
     .composer { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 9px; margin-top: 10px; align-items: end; }
     .memory label { display: flex; gap: 7px; align-items: center; color: var(--text); font-size: 13px; }
     .memory input { width: auto; min-height: auto; }
+    .quota { display: grid; gap: 9px; }
+    .quotaHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .quotaValue { font-weight: 820; }
+    .quotaBar { height: 7px; border-radius: 999px; background: #e5eaf2; overflow: hidden; }
+    .quotaBar span { display: block; height: 100%; width: 0%; border-radius: inherit; background: var(--green); transition: width .2s ease; }
+    .quotaBar.low span { background: var(--red); }
+    .quotaBar.mid span { background: var(--amber); }
     .pill { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 760; background: #eef2f7; color: var(--muted); }
     .pill.active { color: var(--green); background: #eaf7f1; }
     .pill.waiting { color: var(--amber); background: #fff8e7; }
@@ -2318,6 +2499,24 @@ def index_html_cn_v3() -> bytes:
         <label><input type="checkbox" id="memHuman"> 人工介入</label>
         <label><input type="checkbox" id="memArtifacts"> 当前产物</label>
         <button id="saveMemoryBtn" style="margin-top:10px">保存</button>
+      </section>
+      <section>
+        <h2>Codex 状态</h2>
+        <div class="quota">
+          <div>
+            <div class="quotaHead"><span class="label" id="codexPrimaryLabel">短周期余量</span><span class="quotaValue" id="codexPrimaryValue">-</span></div>
+            <div class="quotaBar" id="codexPrimaryBarWrap"><span id="codexPrimaryBar"></span></div>
+          </div>
+          <div>
+            <div class="quotaHead"><span class="label" id="codexSecondaryLabel">长周期余量</span><span class="quotaValue" id="codexSecondaryValue">-</span></div>
+            <div class="quotaBar" id="codexSecondaryBarWrap"><span id="codexSecondaryBar"></span></div>
+          </div>
+          <div class="grid2">
+            <div><div class="label">计划</div><div class="value" id="codexPlan">-</div></div>
+            <div><div class="label">上下文</div><div class="value" id="codexContext">-</div></div>
+          </div>
+          <p class="muted" id="codexStatusMeta">等待读取 Codex session</p>
+        </div>
       </section>
       <section>
         <h2>文件树</h2>
@@ -2386,6 +2585,29 @@ def index_html_cn_v3() -> bytes:
       if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
       return `${Math.floor(seconds / 3600)} 小时前`;
     }
+    function compactNumber(value) {
+      if (value === null || value === undefined) return '-';
+      return Number(value).toLocaleString('zh-CN');
+    }
+    function percent(value) {
+      if (value === null || value === undefined) return '-';
+      return `${Math.round(Number(value) * 10) / 10}%`;
+    }
+    function windowLabel(minutes, fallback) {
+      if (!minutes) return fallback;
+      if (minutes % 1440 === 0) return `${minutes / 1440} 天余量`;
+      if (minutes % 60 === 0) return `${minutes / 60} 小时余量`;
+      return `${minutes} 分钟余量`;
+    }
+    function resetText(seconds) {
+      if (seconds === null || seconds === undefined) return '';
+      return `重置 ${ago(seconds)}后`;
+    }
+    function setQuotaBar(wrapId, barId, remaining) {
+      const value = remaining === null || remaining === undefined ? 0 : Math.max(0, Math.min(100, Number(remaining)));
+      $(barId).style.width = `${value}%`;
+      $(wrapId).className = `quotaBar ${value < 20 ? 'low' : value < 50 ? 'mid' : ''}`;
+    }
     function healthClass(health) {
       if (health === 'active') return 'active';
       if (health === 'waiting' || health === 'ready') return 'waiting';
@@ -2413,6 +2635,32 @@ def index_html_cn_v3() -> bytes:
         `<div class="phase ${p.status}"><strong>${p.index}. ${esc(p.key)}</strong><br><span>${esc(p.title)}</span></div>`
       ).join('');
     }
+    function renderCodexStatus(data) {
+      if (!data.available) {
+        $('codexPrimaryValue').textContent = '-';
+        $('codexSecondaryValue').textContent = '-';
+        $('codexPlan').textContent = '-';
+        $('codexContext').textContent = '-';
+        $('codexStatusMeta').textContent = data.message || '没有读到 Codex 状态';
+        setQuotaBar('codexPrimaryBarWrap', 'codexPrimaryBar', 0);
+        setQuotaBar('codexSecondaryBarWrap', 'codexSecondaryBar', 0);
+        return;
+      }
+      const primary = data.primary || {};
+      const secondary = data.secondary || {};
+      $('codexPrimaryLabel').textContent = windowLabel(primary.window_minutes, '短周期余量');
+      $('codexSecondaryLabel').textContent = windowLabel(secondary.window_minutes, '长周期余量');
+      $('codexPrimaryValue').textContent = percent(primary.remaining_percent);
+      $('codexSecondaryValue').textContent = percent(secondary.remaining_percent);
+      setQuotaBar('codexPrimaryBarWrap', 'codexPrimaryBar', primary.remaining_percent);
+      setQuotaBar('codexSecondaryBarWrap', 'codexSecondaryBar', secondary.remaining_percent);
+      $('codexPlan').textContent = data.plan_type || '-';
+      $('codexContext').textContent = data.model_context_window ? compactNumber(data.model_context_window) : '-';
+      const total = data.total_token_usage || {};
+      const source = data.source === 'active' ? '当前运行' : '最近会话';
+      const reset = [resetText(primary.reset_in_seconds), resetText(secondary.reset_in_seconds)].filter(Boolean).join(' / ');
+      $('codexStatusMeta').textContent = `${source} · 更新 ${ago(data.age_seconds)} · total ${compactNumber(total.total_tokens)} tokens${reset ? ' · ' + reset : ''}`;
+    }
     function renderFeed(data) {
       if (!data.messages.length) {
         $('feed').innerHTML = '<div class="empty">还没有 Codex 进展。启动后台任务后，这里会显示 Codex 自己写入的自然语言更新。</div>';
@@ -2436,6 +2684,7 @@ def index_html_cn_v3() -> bytes:
       ).join('');
     }
     async function refreshStatus() { renderStatus(await api('/api/status')); }
+    async function refreshCodexStatus() { renderCodexStatus(await api('/api/codex/status')); }
     async function refreshFeed() { renderFeed(await api('/api/stream?limit=80')); }
     async function refreshTree() {
       const data = await api('/api/tree');
@@ -2454,7 +2703,7 @@ def index_html_cn_v3() -> bytes:
       $('memArtifacts').checked = !!mem.artifact_index;
     }
     async function refreshAll() {
-      const results = await Promise.allSettled([refreshProjects(), refreshStatus(), refreshFeed(), refreshTree(), refreshMemory()]);
+      const results = await Promise.allSettled([refreshProjects(), refreshStatus(), refreshCodexStatus(), refreshFeed(), refreshTree(), refreshMemory()]);
       if (!results.some(item => item.status === 'rejected')) setError('');
     }
     async function switchProject(path) {
@@ -2514,7 +2763,7 @@ def index_html_cn_v3() -> bytes:
     });
     refreshAll();
     setInterval(() => {
-      Promise.allSettled([refreshStatus(), refreshFeed(), refreshTree()]).then(results => {
+      Promise.allSettled([refreshStatus(), refreshCodexStatus(), refreshFeed(), refreshTree()]).then(results => {
         if (!results.some(item => item.status === 'rejected')) setError('');
       });
     }, 2000);
@@ -2557,6 +2806,8 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 self.send_json(payload)
             elif path == "/api/projects":
                 self.send_json({"projects": discover_projects(self.root)})
+            elif path == "/api/codex/status":
+                self.send_json(codex_status(self.root))
             elif path == "/api/logs":
                 limit = int(query.get("limit", ["120"])[0])
                 lines = []
