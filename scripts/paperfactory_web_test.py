@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 import tempfile
 import threading
@@ -33,6 +34,8 @@ def fetch_text(url: str) -> str:
 
 
 def main() -> int:
+    assert paperfactory_web.project_slug("全模态 生成式推荐!") == "全模态-生成式推荐"
+
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp) / ".research"
         researchctl.command_init(
@@ -43,12 +46,14 @@ def main() -> int:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         base = f"http://127.0.0.1:{server.server_address[1]}"
+        created_project_dir: Path | None = None
         try:
             index = fetch_text(base + "/")
             assert "PaperFactory" in index
             assert "运行状态" in index
             assert "Codex 现在在做什么" in index
             assert "研究任务" in index
+            assert "新建并切换" in index
             assert "文件树" in index
             assert "treeFolder" in index
             assert "buildFileTree" in index
@@ -143,6 +148,18 @@ def main() -> int:
 
             projects = fetch_json(base + "/api/projects")
             assert any(item["research_dir"] == str(root) and item["current"] for item in projects["projects"])
+            assert all("running" in item for item in projects["projects"])
+            created = fetch_json(
+                base + "/api/project/create",
+                {"task": "parallel web smoke research direction", "name": "parallel-ui-smoke"},
+            )
+            created_project_dir = Path(created["created_project"]["project_dir"])
+            created_root = Path(created["created_project"]["research_dir"])
+            assert created_root.exists()
+            assert created["phase"]["key"] == "scope"
+            assert created["created_project"]["name"].endswith("parallel-ui-smoke")
+            assert "parallel web smoke research direction" in (created_root / "task.md").read_text(encoding="utf-8")
+            assert any(item["research_dir"] == str(created_root) and item["current"] for item in created["projects"])
             switched = fetch_json(base + "/api/project/switch", {"research_dir": str(root)})
             assert switched["research_dir"] == str(root)
 
@@ -258,6 +275,8 @@ def main() -> int:
             server.shutdown()
             server.server_close()
             thread.join(timeout=5)
+            if created_project_dir is not None:
+                shutil.rmtree(created_project_dir, ignore_errors=True)
 
     print("paperfactory web smoke tests passed")
     return 0

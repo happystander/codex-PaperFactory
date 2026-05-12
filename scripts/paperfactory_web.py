@@ -8,6 +8,7 @@ import base64
 import json
 import mimetypes
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -152,9 +153,69 @@ def normalize_research_root(value: str | Path) -> Path:
     return path
 
 
+def workspace_for(root: Path) -> Path:
+    current = normalize_research_root(root)
+    if current.name == ".research":
+        return current.parent.parent
+    return current.parent
+
+
+def project_slug(text: str) -> str:
+    slug = re.sub(r"[^\w\u4e00-\u9fff]+", "-", text.strip().lower(), flags=re.UNICODE).strip("-_")
+    slug = re.sub(r"-{2,}", "-", slug)[:48].strip("-_")
+    return slug or "research"
+
+
+def unique_project_dir(workspace: Path, task: str, name: str = "") -> Path:
+    stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
+    slug = project_slug(name or task)
+    base = f"{stamp}-{slug}"
+    candidate = workspace / base
+    suffix = 2
+    while candidate.exists():
+        candidate = workspace / f"{base}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def project_job_summary(root: Path) -> dict[str, Any]:
+    job = read_job(root)
+    pid = int(job.get("pid") or 0) if job else 0
+    running = pid_running(pid)
+    status = str(job.get("status") or "idle") if job else "idle"
+    if status == "running" and not running:
+        status = "finished_or_stopped"
+    return {
+        "running": running,
+        "pid": pid or None,
+        "mode": job.get("mode") if job else None,
+        "status": status,
+        "message": job.get("message") if job else "",
+    }
+
+
+def create_research_project(current_root: Path, task: str, name: str = "") -> dict[str, Any]:
+    clean_task = task.strip()
+    if not clean_task:
+        raise ValueError("task must not be empty")
+    workspace = workspace_for(current_root)
+    workspace.mkdir(parents=True, exist_ok=True)
+    project_dir = unique_project_dir(workspace, clean_task, name)
+    research_dir = project_dir / ".research"
+    researchctl.command_init(
+        argparse.Namespace(research_dir=str(research_dir), task=clean_task, force=False)
+    )
+    return {
+        "name": project_dir.name,
+        "project_dir": str(project_dir),
+        "research_dir": str(research_dir),
+        "task": clean_task,
+    }
+
+
 def discover_projects(root: Path) -> list[dict[str, Any]]:
     current = normalize_research_root(root)
-    workspace = current.parent.parent if current.name == ".research" else current.parent
+    workspace = workspace_for(current)
     candidates = [current]
     if workspace.exists():
         try:
@@ -180,6 +241,7 @@ def discover_projects(root: Path) -> list[dict[str, Any]]:
             state = researchctl.load_state(rd)
         except SystemExit:
             continue
+        job = project_job_summary(rd)
         projects.append(
             {
                 "name": rd.parent.name if rd.name == ".research" else rd.name,
@@ -187,6 +249,8 @@ def discover_projects(root: Path) -> list[dict[str, Any]]:
                 "project_dir": str(rd.parent if rd.name == ".research" else rd),
                 "task": state.get("task", ""),
                 "phase": state.get("phase", ""),
+                "running": job["running"],
+                "job": job,
                 "current": rd.resolve() == current.resolve(),
             }
         )
@@ -2750,6 +2814,8 @@ def index_html_cn_v3() -> bytes:
     .row > input { flex: 1 1 180px; width: auto; }
     .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
     .projectSelect { margin-top: 8px; }
+    .newProjectBox { display:grid; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
+    .newProjectBox textarea { min-height:74px; }
     .tree { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fbfdff; padding:4px 0; }
     .treeFolder { margin:0; }
     .treeFolder summary { min-height:30px; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 8px; color:var(--text); font-size:12px; font-weight:760; border-bottom:1px solid #edf2f7; cursor:pointer; }
@@ -2827,6 +2893,12 @@ def index_html_cn_v3() -> bytes:
         <div class="row" style="margin-top:8px">
           <input id="projectPathInput" placeholder="输入 .research 或项目目录路径">
           <button id="switchPathBtn">切换</button>
+        </div>
+        <div class="newProjectBox">
+          <textarea id="newProjectTask" placeholder="输入新研究方向"></textarea>
+          <input id="newProjectName" placeholder="方向简称（可选）">
+          <button class="primary" id="newProjectBtn">新建并切换</button>
+          <p class="tiny">自动生成独立文件夹，旧研究继续后台运行。</p>
         </div>
       </section>
       <section>
@@ -3278,9 +3350,11 @@ def index_html_cn_v3() -> bytes:
     }
     async function refreshProjects() {
       const data = await api('/api/projects');
-      $('projectSelect').innerHTML = data.projects.map(p =>
-        `<option value="${esc(p.research_dir)}" ${p.current ? 'selected' : ''}>${esc(p.name)} · ${esc(p.phase || '')}</option>`
-      ).join('');
+      $('projectSelect').innerHTML = data.projects.map(p => {
+        const run = p.running ? '运行中' : '空闲';
+        const cur = p.current ? '当前' : run;
+        return `<option value="${esc(p.research_dir)}" ${p.current ? 'selected' : ''}>${esc(p.name)} · ${esc(p.phase || '')} · ${esc(cur)}</option>`;
+      }).join('');
     }
     async function refreshStatus() { renderStatus(await api('/api/status')); }
     async function refreshCodexStatus() { renderCodexStatus(await api('/api/codex/status')); }
@@ -3329,12 +3403,37 @@ def index_html_cn_v3() -> bytes:
         await refreshAll();
       } catch (err) {}
     }
+    async function createProject() {
+      const task = $('newProjectTask').value.trim();
+      if (!task) {
+        setError('新研究方向不能为空');
+        return;
+      }
+      const btn = $('newProjectBtn');
+      btn.disabled = true;
+      btn.textContent = '创建中';
+      try {
+        await api('/api/project/create', {method: 'POST', body: JSON.stringify({
+          task,
+          name: $('newProjectName').value.trim()
+        })});
+        $('newProjectTask').value = '';
+        $('newProjectName').value = '';
+        openTreeFolders.clear();
+        treeInitialized = false;
+        await refreshAll();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '新建并切换';
+      }
+    }
     $('refreshBtn').addEventListener('click', refreshAll);
     $('projectSelect').addEventListener('change', () => switchProject($('projectSelect').value));
     $('switchPathBtn').addEventListener('click', () => {
       const path = $('projectPathInput').value.trim();
       if (path) switchProject(path);
     });
+    $('newProjectBtn').addEventListener('click', createProject);
     $('startBtn').addEventListener('click', async () => {
       const cycles = $('cyclesInput').value.trim();
       const duration = $('durationInput').value.trim();
@@ -3518,6 +3617,23 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 self.manager.root = new_root
                 payload = phase_payload(new_root)
                 payload["job"] = self.manager.snapshot()
+                self.send_json(payload)
+            elif parsed.path == "/api/project/create":
+                if not str(body.get("task") or "").strip():
+                    self.send_error_json(400, "task must not be empty")
+                    return
+                created = create_research_project(
+                    self.root,
+                    task=str(body.get("task") or ""),
+                    name=str(body.get("name") or ""),
+                )
+                new_root = Path(created["research_dir"]).resolve()
+                type(self).root = new_root
+                self.manager.root = new_root
+                payload = phase_payload(new_root)
+                payload["job"] = self.manager.snapshot()
+                payload["created_project"] = created
+                payload["projects"] = discover_projects(new_root)
                 self.send_json(payload)
             elif parsed.path == "/api/prompt":
                 prompt = write_next_prompt(self.root)
