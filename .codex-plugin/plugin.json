@@ -1,6 +1,6 @@
 {
   "name": "codex-paper-factory",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Codex PaperFactory: long-horizon research automation with durable logs, phase gates, a Chinese agent-style Web UI, scientific figures, and conference-paper drafting checkpoints.",
   "author": {
     "name": "happystander",
@@ -34,7 +34,7 @@
   "interface": {
     "displayName": "Codex PaperFactory",
     "shortDescription": "Turn a research task into auditable experiments, figures, and paper drafts.",
-    "longDescription": "A Codex plugin for turning an initial research task into a long-running, auditable paper-production workflow: scope, literature survey, baseline matrix, data sanity, experiments, ablations, scientific figures, conference-paper drafting, internal review, a Chinese agent-style local Web UI, detached background runs, human intervention notes, and automated top-conference-style manuscript review.",
+    "longDescription": "A Codex plugin for turning an initial research task into a long-running, auditable paper-production workflow: scope, literature survey, baseline matrix, data sanity, experiments, ablations, scientific figures, conference-paper drafting, internal review, a Chinese agent-style local Web UI, detached background runs, Codex-authored progress updates, selectable memory, human intervention notes, and automated top-conference-style manuscript review after paper drafting.",
     "developerName": "happystander",
     "category": "Research",
     "capabilities": [
@@ -57,7 +57,7 @@
       "Create paper-ready figures and a conference draft from evidence.",
       "Audit my manuscript and prepare citation/data availability checks.",
       "Generate a PaperFactory dashboard and next-step prompt.",
-      "Open the interactive PaperFactory Web UI and run a top-conference review."
+      "Open the interactive PaperFactory Web UI and monitor Codex-authored progress."
     ],
     "brandColor": "#2563EB"
   }

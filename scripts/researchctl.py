@@ -174,10 +174,16 @@ PHASES: tuple[Phase, ...] = (
         key="internal_review",
         title="Internal Review",
         objective="Adversarially review novelty, evidence, fairness, reproducibility, and paper quality.",
-        required=("reviews/internal_review.md", "paper/camera_ready_checklist.md", "reports/internal_review.json"),
+        required=(
+            "reviews/internal_review.md",
+            "reviews/top_conference_review.md",
+            "paper/camera_ready_checklist.md",
+            "reports/internal_review.json",
+        ),
         gate="Review identifies blocking gaps, overclaims, missing baselines, reproducibility holes, and required revisions; completion means no blocking issues remain or they are explicitly scoped out.",
         prompt_focus=(
             "Review as a skeptical program committee member.",
+            "Use manuscript-audit as a top-conference reviewer after paper_drafting is complete, and write reviews/top_conference_review.md.",
             "Check whether a stronger baseline would invalidate the main claim.",
             "If blockers remain, set report status to needs_more_work and route back manually in the summary.",
         ),
@@ -410,8 +416,23 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
         if companion_skills
         else ""
     )
+    memory_config_path = root / "memory_config.json"
+    if memory_config_path.exists():
+        try:
+            memory_config = json.loads(memory_config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            memory_config = {}
+    else:
+        memory_config = {}
+    memory_defaults = {
+        "summary": True,
+        "logs": True,
+        "human_interventions": True,
+        "artifact_index": True,
+    }
+    memory = {key: bool(memory_config.get(key, default)) for key, default in memory_defaults.items()}
     intervention_path = root / "human_interventions.md"
-    if intervention_path.exists():
+    if memory["human_interventions"] and intervention_path.exists():
         intervention_text = intervention_path.read_text(encoding="utf-8", errors="ignore")[-4000:].strip()
     else:
         intervention_text = ""
@@ -422,6 +443,17 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
         if intervention_text
         else ""
     )
+    memory_reads = [".research/state.json", ".research/task.md"]
+    if memory["summary"]:
+        memory_reads.append(".research/results/summary.md")
+    if memory["logs"]:
+        memory_reads.append(".research/logs/research.log")
+    if memory["human_interventions"]:
+        memory_reads.append(".research/human_interventions.md when present")
+    if memory["artifact_index"]:
+        memory_reads.append("the current phase required artifact files when present")
+    memory_list = "\n".join(f"- {item}" for item in memory_reads)
+    progress_feed = root / "progress" / "feed.jsonl"
 
     return f"""You are running the Codex PaperFactory long-horizon workflow.
 
@@ -441,13 +473,21 @@ Currently missing or incomplete:
 
 Current phase report status: {status or "missing"}
 
+User-visible progress feed:
+- Append concise natural-language progress updates to: {progress_feed}
+- Use one valid JSON object per line. Schema:
+  {{"ts":"<ISO time>","role":"agent","phase":"{phase.key}","status":"working|blocked|done|note","message":"<1-3 user-facing sentences about what you did or are doing>","files":["<artifact path>", "..."]}}
+- Write a progress event when you start the cycle, after each meaningful artifact or experiment action, when blocked, and before finishing.
+- The message must be natural language for the human user. Do not dump raw logs, stack traces, or tool output into this feed.
+
 Phase focus:
 {focus_list}
 {companion_text}
 {intervention_section}
 
 Operating rules:
-- Read .research/state.json, .research/task.md, .research/logs/research.log, and .research/results/summary.md before acting.
+- Before acting, read the selected memory sources:
+{memory_list}
 - Append concise audit entries to .research/logs/research.log with action, rationale, outcome, blocker if any, and next step.
 - Use primary sources for papers, repositories, datasets, benchmarks, and model cards. Verify recent or unstable facts before relying on them.
 - Do not invent citations, metrics, tables, or experiment outcomes.

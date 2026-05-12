@@ -44,8 +44,9 @@ def main() -> int:
         base = f"http://127.0.0.1:{server.server_address[1]}"
         try:
             index = fetch_text(base + "/")
-            assert "PaperFactory 智能体" in index
-            assert "后台运行" in index
+            assert "PaperFactory" in index
+            assert "Codex 进展" in index
+            assert "文件树" in index
 
             status = fetch_json(base + "/api/status")
             assert status["phase"]["key"] == "scope"
@@ -57,6 +58,7 @@ def main() -> int:
 
             prompt = fetch_json(base + "/api/prompt", {})
             assert "updated web smoke task" in prompt["prompt"]
+            assert "progress/feed.jsonl" in prompt["prompt"]
             assert (root / "next_prompt.md").exists()
 
             intervention = fetch_json(base + "/api/intervention", {"message": "人工要求：优先检查引用真实性。"})
@@ -64,12 +66,11 @@ def main() -> int:
             assert "优先检查引用真实性" in intervention["prompt"]
             assert (root / "human_interventions.md").exists()
 
-            review = fetch_json(
-                base + "/api/review/prompt",
-                {"venue": "ICLR", "draft_path": "paper/paper_draft.md", "mode": "deep-review"},
-            )
-            assert "manuscript-audit" in review["prompt"]
-            assert (root / "reviews" / "top_conference_review_prompt.md").exists()
+            memory = fetch_json(base + "/api/memory")
+            assert memory["summary"] is True
+            memory = fetch_json(base + "/api/memory", {"logs": False, "artifact_index": False})
+            assert memory["logs"] is False
+            assert memory["artifact_index"] is False
 
             start = fetch_json(base + "/api/run/start", {"cycles": 1, "interval": 1, "dry_run": True})
             assert start["ok"] is True
@@ -84,6 +85,8 @@ def main() -> int:
 
             artifacts = fetch_json(base + "/api/artifacts")
             assert any(item["path"] == "next_prompt.md" for item in artifacts["files"])
+            tree = fetch_json(base + "/api/tree")
+            assert any(item["path"] == "next_prompt.md" for item in tree["files"])
             stream = fetch_json(base + "/api/stream?limit=80")
             assert any("优先检查引用真实性" in item["text"] for item in stream["messages"])
 

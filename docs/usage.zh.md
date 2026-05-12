@@ -43,12 +43,15 @@
 
 - 一键启动/暂停 Codex 长跑循环；
 - 后台 detached 运行：网页或 Web UI 关掉后，已启动的后台任务仍继续跑；
-- 像智能体对话页一样展示 Codex CLI 的可见执行输出、工具日志和系统记录；
+- 左侧简约文件树，中间自然语言进展流，上方阶段流程图；
+- 进展流来自 Codex 自己写入的 `.research/progress/feed.jsonl`，不再把原始日志按换行拆成聊天气泡；
+- 可控制轮数、间隔和总运行时长；
+- 可选择下一轮 prompt 读取哪些记忆：摘要、日志、人工介入、当前产物；
 - 人工介入聊天：消息写入 `.research/human_interventions.md`，下一轮 prompt 自动带上；
 - 编辑初始研究任务；
 - 浏览 `.research/` 下的论文、报告、实验和日志产物；
 - 查看 `.research/figures/` 下的图表；
-- 生成或运行“顶会审稿人”式自动审稿，使用 `manuscript-audit` skill，默认输出到 `.research/reviews/top_conference_review.md`。
+- 论文生成后在 `internal_review` 阶段自动运行“顶会审稿人”式内审，默认输出到 `.research/reviews/top_conference_review.md`。
 
 注意：人工介入对下一轮生效。如果当前 `codex exec` 已经在运行，而你希望立刻改变方向，请先暂停后台任务，再发送介入并重新启动。
 

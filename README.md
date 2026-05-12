@@ -124,12 +124,15 @@ The Web UI runs on localhost and supports:
 
 - start/pause autonomous Codex cycles;
 - detached background runs that keep going after the browser or Web UI is closed;
-- Chinese agent-style stream view for visible Codex CLI output, tool logs, and system records;
+- a concise Chinese agent-style page with a phase flow, left-side file tree, and task controls;
+- Codex-authored progress messages from `.research/progress/feed.jsonl`; the chat stream does not split or display raw logs;
+- iteration time controls through cycle count, interval, and optional run duration;
+- selectable prompt memory for summary, logs, human interventions, and current artifacts;
 - human intervention messages saved to `.research/human_interventions.md` and injected into the next prompt;
 - editing the initial task stored in `.research/task.md` and `.research/state.json`;
 - browsing `.research/` artifacts and previewing text files;
 - viewing generated figures under `.research/figures/`;
-- generating or running a top-conference-style review prompt through `manuscript-audit`.
+- automatic top-conference-style manuscript review in `internal_review` after paper drafting.
 
 Human intervention notes are applied on the next cycle. If an active `codex exec` process is already running, pause and restart when the note must take effect immediately.
 

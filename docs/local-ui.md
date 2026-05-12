@@ -40,25 +40,29 @@ It provides:
 
 - start/pause buttons for autonomous Codex cycles;
 - detached background execution, so a started run continues after the browser tab or Web UI server is closed;
-- an agent-style stream for visible Codex CLI output, tool logs, and system records;
+- a concise Chinese agent-style interface with a left-side file tree and a phase flow;
+- Codex-authored natural-language progress from `.research/progress/feed.jsonl`; raw logs remain available only for diagnostics;
+- cycle count, interval, and optional run-duration controls;
+- memory switches for summary, logs, human interventions, and current artifacts;
 - human intervention messages saved to `.research/human_interventions.md` and injected into the next generated prompt;
-- live polling for `.research/logs/research.log`, `.research/logs/paperfactory-run.out`, `.research/logs/codex-loop.out`, and `.research/logs/review.out`;
 - task editing that updates both `.research/task.md` and `.research/state.json`;
 - artifact browsing and text preview for files under `.research/`;
 - figure browsing for `.svg`, `.pdf`, `.png`, `.jpg`, `.jpeg`, and `.webp` files under `.research/figures/`;
-- a top-conference review panel that generates or runs a `manuscript-audit` prompt.
+- automatic `manuscript-audit` review in `internal_review` after paper drafting is complete.
 
-For a non-destructive UI test, enable `Dry run` before clicking `Start` or `Run Auto Review`. Dry-run mode refreshes prompts and logs without invoking `codex exec`.
+For a non-destructive UI test, enable `Dry run` before clicking `Start`. Dry-run mode refreshes prompts without invoking `codex exec`.
 
 Human intervention takes effect on the next cycle. To force an immediate course correction, pause the background process, send the intervention, then start a new cycle.
 
-The top-conference review prompt is written to:
+The user-facing progress feed is:
 
 ```text
-.research/reviews/top_conference_review_prompt.md
+.research/progress/feed.jsonl
 ```
 
-When executed, the review is instructed to write:
+Codex is instructed to append one JSON object per line with a natural-language `message`. The UI renders that feed directly.
+
+The automatic top-conference review is written during `internal_review`:
 
 ```text
 .research/reviews/top_conference_review.md
