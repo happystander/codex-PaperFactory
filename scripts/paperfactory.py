@@ -469,6 +469,7 @@ def run_codex_cycle(root: Path, codex_bin: str, dry_run: bool) -> int:
     with log_file.open("a", encoding="utf-8") as handle:
         handle.write(f"\n[{researchctl.now()}] PaperFactory cycle start\n")
         handle.write(f"[{researchctl.now()}] Codex workdir: {workdir}\n")
+        handle.flush()
         proc = subprocess.run(
             [codex_bin, "exec", "--full-auto", "--skip-git-repo-check", prompt],
             cwd=workdir,
