@@ -664,7 +664,10 @@ def phase_health(root: Path, phase: researchctl.Phase, *, status: str, active: b
     total = len(required)
     report_status = researchctl.report_status(root, phase)
     missing = [str(item["path"]) for item in required if not item["present"]]
-    if completed or (report_status or "").lower() in researchctl.COMPLETE_STATUSES:
+    if active and (report_status or "").lower() in researchctl.COMPLETE_STATUSES:
+        label = "待复核"
+        tone = "current"
+    elif completed or (report_status or "").lower() in researchctl.COMPLETE_STATUSES:
         label = "已完成"
         tone = "complete"
     elif report_status and report_status.lower() in researchctl.NON_ADVANCING_STATUSES:
@@ -708,17 +711,17 @@ def phase_payload(root: Path) -> dict[str, Any]:
         enabled = bool(item.get("enabled", True))
         if enabled:
             visible_index += 1
-        if phase_key == "complete" or key in history:
-            status = "complete"
-        elif key == phase_key:
+        if key == phase_key:
             status = "current"
+        elif phase_key == "complete" or key in history:
+            status = "complete"
         elif not enabled:
             status = "disabled"
         else:
             status = "pending"
         phase_obj = phase_by_key(root, key)
         health = (
-            phase_health(root, phase_obj, status=status, active=key == phase_key, completed=key in history)
+            phase_health(root, phase_obj, status=status, active=key == phase_key, completed=key in history and key != phase_key)
             if phase_obj
             else {"status_text": "不可用", "status_tone": "stopped", "report_status": "missing", "missing": [], "present_count": 0, "required_count": 0}
         )
@@ -730,6 +733,10 @@ def phase_payload(root: Path) -> dict[str, Any]:
                 "objective": str(item.get("objective") or ""),
                 "gate": str(item.get("gate") or ""),
                 "enabled": enabled,
+                "kind": str(item.get("kind") or "base"),
+                "locked": bool(item.get("locked", False)),
+                "insert_after": str(item.get("insert_after") or ""),
+                "prompt": str(item.get("prompt") or ""),
                 "status": status,
                 "page_url": f"/phase?key={urllib.parse.quote(key)}",
                 **health,
@@ -1341,9 +1348,10 @@ def phase_page_text(root: Path, key: str) -> tuple[str, str]:
         f"目标：{phase.objective}",
         "",
         f"门禁：{phase.gate}",
-        "",
-        "## 必需产物",
     ]
+    if phase.kind == "custom" and phase.custom_prompt:
+        lines.extend(["", "## 自定义 Prompt", phase.custom_prompt])
+    lines.extend(["", "## 必需产物"])
     for item in health["required"]:
         mark = "已生成" if item["present"] else "未生成"
         lines.append(f"- {mark}: {item['path']}")
@@ -2658,13 +2666,15 @@ def index_html_cn_v3() -> bytes:
     .phase { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: #fff; font-size: 12px; min-height: 74px; text-align:left; font-weight:600; }
     .phase.current { border-color: var(--blue); background: var(--soft-blue); }
     .phase.complete { border-color: #bce4d2; background: #effaf5; }
+    .phase.custom { border-color: #c4b5fd; background: #f5f3ff; }
     .phase.disabled { opacity:.48; background:#f8fafc; }
     .phase .phaseMeta { display:block; margin-top:5px; color:var(--muted); font-weight:600; }
     .workflowEditor { display:grid; gap:8px; margin-top:12px; }
-    .workflowRow { display:grid; grid-template-columns: 28px 64px minmax(150px,1fr) 92px; gap:8px; align-items:center; padding:8px; border:1px solid var(--line); border-radius:10px; background:#fff; }
-    .workflowRow.dragging { opacity:.45; }
+    .workflowRow { display:grid; gap:8px; padding:10px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+    .workflowRowHeader { display:grid; grid-template-columns: 72px minmax(140px,1fr) 150px 74px; gap:8px; align-items:center; }
     .workflowRow input[type="text"] { min-height:32px; }
-    .dragHandle { cursor:grab; color:var(--muted); text-align:center; font-weight:900; }
+    .workflowRow textarea { min-height:76px; }
+    .lockNote { border:1px dashed var(--line); border-radius:10px; padding:10px; color:var(--muted); background:#fbfdff; font-size:13px; }
     .tiny { font-size:12px; color:var(--muted); }
     .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .row > input { flex: 1 1 180px; width: auto; }
@@ -2809,12 +2819,14 @@ def index_html_cn_v3() -> bytes:
         <div class="row" style="justify-content:space-between">
           <h2>流程</h2>
           <div class="row">
-            <button id="resetWorkflowBtn">默认</button>
+            <button id="addCustomPhaseBtn">添加阶段</button>
+            <button id="resetWorkflowBtn">清空自定义</button>
             <button class="primary" id="saveWorkflowBtn">保存流程</button>
           </div>
         </div>
-        <p class="muted" style="margin-bottom:10px">点击阶段打开展示页；在下方拖动排序、启停阶段、改显示名称。</p>
+        <p class="muted" style="margin-bottom:10px">主干阶段固定不可改；你可以在主干之间插入自己的阶段，并为每个自定义阶段写 Prompt。</p>
         <div class="flow" id="phaseFlow"></div>
+        <div class="lockNote">基础研究流程会始终保留：范围、综述、数据、基线、方法、实验、证据、写作和内审。自定义阶段只作为额外检查点插入。</div>
         <div class="workflowEditor" id="workflowEditor"></div>
       </section>
       <section>
@@ -2831,6 +2843,8 @@ def index_html_cn_v3() -> bytes:
   <script>
     const $ = (id) => document.getElementById(id);
     const roleName = {agent: 'Codex', human: '你', system: '系统'};
+    let workflowDirty = false;
+    let workflowPhases = [];
 
     function setError(message) {
       $('errorBar').hidden = !message;
@@ -2898,41 +2912,81 @@ def index_html_cn_v3() -> bytes:
       $('memHuman').checked = preset.human_interventions;
       $('memArtifacts').checked = preset.artifact_index;
     }
+    function basePhaseOptions(selected) {
+      const bases = workflowPhases.filter(p => p.kind !== 'custom');
+      return bases.map(p =>
+        `<option value="${esc(p.key)}" ${p.key === selected ? 'selected' : ''}>${esc(p.title)}</option>`
+      ).join('');
+    }
     function workflowRowsFromDom() {
-      return Array.from(document.querySelectorAll('.workflowRow')).map(row => ({
-        key: row.dataset.key,
+      return Array.from(document.querySelectorAll('.workflowRow.custom')).map(row => ({
+        kind: 'custom',
+        key: row.dataset.key || '',
         enabled: row.querySelector('[data-field="enabled"]').checked,
         title: row.querySelector('[data-field="title"]').value.trim(),
-        objective: row.dataset.objective || '',
-        gate: row.dataset.gate || ''
+        insert_after: row.querySelector('[data-field="insert_after"]').value,
+        prompt: row.querySelector('[data-field="prompt"]').value.trim(),
+        objective: row.querySelector('[data-field="objective"]').value.trim(),
+        gate: row.querySelector('[data-field="gate"]').value.trim()
       }));
     }
+    function markWorkflowDirty() {
+      workflowDirty = true;
+    }
+    function newCustomPhase() {
+      return {
+        kind: 'custom',
+        key: `custom_${Date.now()}`,
+        enabled: true,
+        title: '自定义阶段',
+        insert_after: workflowPhases.find(p => p.kind !== 'custom')?.key || 'scope',
+        prompt: '',
+        objective: '',
+        gate: '',
+        page_url: '#'
+      };
+    }
     function renderWorkflowEditor(phases) {
+      workflowPhases = phases;
       if (workflowDirty) return;
-      $('workflowEditor').innerHTML = phases.map(p => `
-        <div class="workflowRow" draggable="true" data-key="${esc(p.key)}" data-objective="${esc(p.objective || '')}" data-gate="${esc(p.gate || '')}">
-          <span class="dragHandle">☰</span>
-          <label><input type="checkbox" data-field="enabled" ${p.enabled ? 'checked' : ''}> 启用</label>
-          <input data-field="title" type="text" value="${esc(p.title)}" aria-label="阶段名称">
-          <button data-open="${esc(p.page_url)}">展示页</button>
+      const customs = phases.filter(p => p.kind === 'custom');
+      if (!customs.length) {
+        $('workflowEditor').innerHTML = '<div class="empty" style="min-height:90px">还没有自定义阶段。点击“添加阶段”，给 Codex 插入额外检查点或专项任务。</div>';
+        return;
+      }
+      $('workflowEditor').innerHTML = customs.map(p => `
+        <div class="workflowRow custom" data-key="${esc(p.key)}">
+          <div class="workflowRowHeader">
+            <label><input type="checkbox" data-field="enabled" ${p.enabled ? 'checked' : ''}> 启用</label>
+            <input data-field="title" type="text" value="${esc(p.title)}" aria-label="阶段名称" placeholder="阶段名称">
+            <select data-field="insert_after" aria-label="插入位置">${basePhaseOptions(p.insert_after || 'scope')}</select>
+            <button data-remove="${esc(p.key)}">删除</button>
+          </div>
+          <textarea data-field="prompt" placeholder="这个阶段要交给 Codex 做什么。写清目标、输入、输出、判断标准。">${esc(p.prompt || '')}</textarea>
+          <div class="grid2">
+            <input data-field="objective" type="text" value="${esc(p.objective || '')}" placeholder="目标说明，可选">
+            <input data-field="gate" type="text" value="${esc(p.gate || '')}" placeholder="完成门禁，可选">
+          </div>
+          <div class="row">
+            <span class="tiny">默认产物：custom/${esc(p.key)}.md 和 reports/${esc(p.key)}.json</span>
+            <button data-open="${esc(p.page_url)}">展示页</button>
+          </div>
         </div>
       `).join('');
       document.querySelectorAll('.workflowRow').forEach(row => {
-        row.addEventListener('dragstart', () => { draggedWorkflowKey = row.dataset.key; row.classList.add('dragging'); });
-        row.addEventListener('dragend', () => row.classList.remove('dragging'));
-        row.addEventListener('dragover', event => event.preventDefault());
-        row.addEventListener('drop', event => {
-          event.preventDefault();
-          const dragged = document.querySelector(`.workflowRow[data-key="${CSS.escape(draggedWorkflowKey || '')}"]`);
-          if (dragged && dragged !== row) {
-            $('workflowEditor').insertBefore(dragged, row);
-            workflowDirty = true;
-          }
+        row.querySelectorAll('input, textarea, select').forEach(input => {
+          input.addEventListener('input', markWorkflowDirty);
+          input.addEventListener('change', markWorkflowDirty);
         });
-        row.querySelectorAll('input').forEach(input => input.addEventListener('input', () => { workflowDirty = true; }));
+        row.querySelector('[data-remove]').addEventListener('click', event => {
+          event.preventDefault();
+          row.remove();
+          markWorkflowDirty();
+        });
         row.querySelector('[data-open]').addEventListener('click', event => {
           event.preventDefault();
-          window.open(event.currentTarget.dataset.open, '_blank');
+          const url = event.currentTarget.dataset.open;
+          if (url && url !== '#') window.open(url, '_blank');
         });
       });
     }
@@ -2953,9 +3007,10 @@ def index_html_cn_v3() -> bytes:
       $('lastActivity').textContent = ago(job.last_activity && job.last_activity.age_seconds);
       $('startBtn').disabled = !!job.running;
       $('stopBtn').disabled = !job.running;
-      $('phaseFlow').innerHTML = data.phases.map(p =>
-        `<button class="phase ${p.status}" data-url="${esc(p.page_url)}"><strong>${esc(p.index)}. ${esc(p.title)}</strong><span class="phaseMeta">${esc(p.status_text || p.status)} · ${esc(p.present_count || 0)}/${esc(p.required_count || 0)}</span></button>`
-      ).join('');
+      $('phaseFlow').innerHTML = data.phases.map(p => {
+        const kindText = p.kind === 'custom' ? '自定义' : '主干';
+        return `<button class="phase ${p.status} ${p.kind === 'custom' ? 'custom' : ''}" data-url="${esc(p.page_url)}"><strong>${esc(p.index)}. ${esc(p.title)}</strong><span class="phaseMeta">${esc(kindText)} · ${esc(p.status_text || p.status)} · ${esc(p.present_count || 0)}/${esc(p.required_count || 0)}</span></button>`;
+      }).join('');
       document.querySelectorAll('.phase[data-url]').forEach(el => el.addEventListener('click', () => window.open(el.dataset.url, '_blank')));
       renderWorkflowEditor(data.phases);
     }
@@ -3092,6 +3147,13 @@ def index_html_cn_v3() -> bytes:
       applyMemoryProfile($('memoryProfile').value);
       const text = $('memoryProfile').selectedOptions[0]?.textContent || '';
       $('memoryProfileText').textContent = text === '自定义' ? '手动选择高级来源。' : '保存后下一轮 Codex 会按这个记忆模式读取上下文。';
+    });
+    $('addCustomPhaseBtn').addEventListener('click', () => {
+      const current = workflowRowsFromDom();
+      current.push(newCustomPhase());
+      workflowDirty = false;
+      renderWorkflowEditor([...workflowPhases.filter(p => p.kind !== 'custom'), ...current]);
+      workflowDirty = true;
     });
     $('saveWorkflowBtn').addEventListener('click', async () => {
       try {
@@ -3239,9 +3301,9 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                         pass
                     rows = researchctl.workflow_config_for_ui(self.root)
                 else:
-                    raw_phases = body.get("phases")
+                    raw_phases = body.get("custom_phases", body.get("phases"))
                     if not isinstance(raw_phases, list):
-                        self.send_error_json(400, "phases must be a list")
+                        self.send_error_json(400, "phases/custom_phases must be a list")
                         return
                     rows = researchctl.write_workflow_config(self.root, raw_phases)
                 enabled_keys = [str(item["key"]) for item in rows if item.get("enabled", True)]

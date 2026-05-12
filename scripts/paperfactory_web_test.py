@@ -51,6 +51,8 @@ def main() -> int:
             assert "研究任务" in index
             assert "文件树" in index
             assert "保存流程" in index
+            assert "主干阶段固定" in index
+            assert "添加阶段" in index
             assert "标准记忆" in index
 
             status = fetch_json(base + "/api/status")
@@ -67,16 +69,34 @@ def main() -> int:
 
             workflow = fetch_json(base + "/api/workflow")
             assert workflow["phases"][0]["key"] == "scope"
-            edited = dict(workflow)
-            edited["phases"] = [dict(item) for item in workflow["phases"]]
-            edited["phases"][0]["title"] = "自定义范围"
-            edited["phases"][1], edited["phases"][2] = edited["phases"][2], edited["phases"][1]
-            saved_workflow = fetch_json(base + "/api/workflow", edited)
-            assert saved_workflow["phases"][0]["title"] == "自定义范围"
+            assert workflow["phases"][0]["kind"] == "base"
+            assert workflow["phases"][0]["locked"] is True
+            saved_workflow = fetch_json(
+                base + "/api/workflow",
+                {
+                    "phases": [
+                        {
+                            "kind": "custom",
+                            "key": "custom_user_checkpoint",
+                            "title": "用户补充检查",
+                            "insert_after": "scope",
+                            "prompt": "检查范围阶段是否遗漏用户指定约束。",
+                            "enabled": True,
+                        }
+                    ]
+                },
+            )
+            assert saved_workflow["phases"][0]["title"] == "Research Scope"
+            assert saved_workflow["phases"][1]["key"] == "custom_user_checkpoint"
+            assert saved_workflow["phases"][1]["kind"] == "custom"
             status = fetch_json(base + "/api/status")
-            assert status["phases"][0]["title"] == "自定义范围"
+            assert status["phases"][1]["title"] == "用户补充检查"
+            custom_page = fetch_text(base + "/phase?key=custom_user_checkpoint")
+            assert "自定义 Prompt" in custom_page
+            assert "检查范围阶段是否遗漏用户指定约束" in custom_page
             reset_workflow = fetch_json(base + "/api/workflow", {"reset": True})
             assert reset_workflow["phases"][0]["title"] == "Research Scope"
+            assert all(item["kind"] == "base" for item in reset_workflow["phases"])
 
             projects = fetch_json(base + "/api/projects")
             assert any(item["research_dir"] == str(root) and item["current"] for item in projects["projects"])

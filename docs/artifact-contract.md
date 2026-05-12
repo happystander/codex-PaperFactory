@@ -11,7 +11,13 @@ Each report lives at `.research/reports/<phase>.json`:
   "summary": "What was completed",
   "evidence": ["relative/path/to/artifact"],
   "risks": ["Known limitations"],
-  "next": "Next concrete action"
+  "next": "Next concrete action",
+  "route": {
+    "decision": "advance",
+    "target_phase": "",
+    "reason": "Why this route is scientifically safe",
+    "confidence": 0.8
+  }
 }
 ```
 
@@ -21,6 +27,16 @@ Allowed `status` values:
 - `needs_more_work`: continue the same phase.
 - `blocked`: cannot continue without an external dependency or user decision.
 - `failed`: phase attempt failed and needs diagnosis.
+
+Optional route decisions:
+
+- `advance`: move to the next configured phase.
+- `repeat`: keep the same phase active for another attempt.
+- `jump_back`: return to a valid earlier phase named by `target_phase`.
+- `skip_next`: skip only the immediately following phase.
+- `jump_to`: jump to a valid configured phase or `complete`.
+
+The base workflow is locked. `.research/workflow.json` stores only user-inserted custom phases, each with a prompt and default artifacts under `.research/custom/` plus `.research/reports/<custom_phase>.json`.
 
 Core artifact rules:
 

@@ -32,6 +32,24 @@ def main() -> int:
         proc = run(["--research-dir", str(rd), "init", "--task", "test task"], cwd)
         assert proc.returncode == 0, proc.stderr
         assert (rd / "state.json").exists()
+        (rd / "workflow.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "custom_phases": [
+                        {
+                            "key": "custom_protocol_review",
+                            "title": "Protocol Review",
+                            "insert_after": "scope",
+                            "prompt": "Review the scope for protocol holes before survey.",
+                            "enabled": True,
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         proc = run(["--research-dir", str(rd), "status"], cwd)
         assert proc.returncode == 0, proc.stderr
@@ -51,7 +69,34 @@ def main() -> int:
         proc = run(["--research-dir", str(rd), "advance"], cwd)
         assert proc.returncode == 0, proc.stderr
         state = json.loads((rd / "state.json").read_text(encoding="utf-8"))
-        assert state["phase"] == "survey"
+        assert state["phase"] == "custom_protocol_review"
+
+        proc = run(["--research-dir", str(rd), "next-prompt"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert "Review the scope for protocol holes before survey" in proc.stdout
+
+        (rd / "custom").mkdir(exist_ok=True)
+        (rd / "custom" / "custom_protocol_review.md").write_text("custom review\n", encoding="utf-8")
+        (rd / "reports" / "custom_protocol_review.json").write_text(
+            json.dumps(
+                {
+                    "phase": "custom_protocol_review",
+                    "status": "complete",
+                    "route": {
+                        "decision": "skip_next",
+                        "reason": "survey was already covered by the inserted review fixture",
+                        "confidence": 0.7,
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        proc = run(["--research-dir", str(rd), "advance"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        state = json.loads((rd / "state.json").read_text(encoding="utf-8"))
+        assert state["phase"] == "data_sanity"
+        assert state["phase_routes"][-1]["decision"] == "skip_next"
 
         proc = run(["--research-dir", str(rd), "validate"], cwd)
         assert proc.returncode == 0, proc.stderr

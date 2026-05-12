@@ -33,11 +33,12 @@ def status_label(path: Path) -> str:
     return "OK" if path.exists() and path.stat().st_size > 0 else "MISSING"
 
 
-def phase_progress(phase_key: str) -> tuple[int, int]:
-    total = len(researchctl.PHASES)
+def phase_progress(root: Path, phase_key: str) -> tuple[int, int]:
+    phases = researchctl.configured_phases(root)
+    total = len(phases)
     if phase_key == "complete":
         return total, total
-    for index, phase in enumerate(researchctl.PHASES, 1):
+    for index, phase in enumerate(phases, 1):
         if phase.key == phase_key:
             return index, total
     return 0, total
@@ -126,9 +127,9 @@ def command_new(args: argparse.Namespace) -> int:
 def command_status(args: argparse.Namespace) -> int:
     root = resolve_research_dir(args.research_dir)
     state = load_state_or_exit(root)
-    phase = researchctl.current_phase(state)
+    phase = researchctl.current_phase(state, root)
     phase_key = "complete" if phase is None else phase.key
-    done, total = phase_progress(phase_key)
+    done, total = phase_progress(root, phase_key)
 
     if args.json:
         payload = {
@@ -202,17 +203,18 @@ def file_link(root: Path, rel: str) -> str:
 def phase_rows(root: Path, current_key: str) -> str:
     rows = []
     completed = {item.get("phase") for item in load_state_or_exit(root).get("phase_history", [])}
-    for index, phase in enumerate(researchctl.PHASES, 1):
-        if phase.key in completed or current_key == "complete":
-            state = "complete"
-        elif phase.key == current_key:
+    for index, phase in enumerate(researchctl.configured_phases(root), 1):
+        if phase.key == current_key:
             state = "current"
+        elif phase.key in completed or current_key == "complete":
+            state = "complete"
         else:
             state = "pending"
+        kind = "custom" if phase.kind == "custom" else "base"
         rows.append(
             "<tr>"
             f"<td>{index}</td>"
-            f"<td><strong>{html.escape(phase.key)}</strong><br><span>{html.escape(phase.title)}</span></td>"
+            f"<td><strong>{html.escape(phase.key)}</strong><br><span>{html.escape(phase.title)} · {kind}</span></td>"
             f'<td><span class="pill {state}">{state}</span></td>'
             f"<td>{html.escape(phase.objective)}</td>"
             "</tr>"
@@ -238,9 +240,9 @@ def artifact_rows(root: Path, phase: researchctl.Phase | None) -> str:
 
 
 def build_dashboard_html(root: Path, state: dict[str, Any]) -> str:
-    phase = researchctl.current_phase(state)
+    phase = researchctl.current_phase(state, root)
     phase_key = "complete" if phase is None else phase.key
-    done, total = phase_progress(phase_key)
+    done, total = phase_progress(root, phase_key)
     missing_count = 0 if phase is None else len(researchctl.missing_required(root, phase))
     report_status = "complete" if phase is None else (researchctl.report_status(root, phase) or "missing")
     logs = recent_log_lines(root, 12)

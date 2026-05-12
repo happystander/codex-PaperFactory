@@ -49,6 +49,7 @@
 - 进展流来自 Codex 自己写入的 `.research/progress/feed.jsonl`，不生成伪进展，也不把原始日志按换行拆成聊天气泡；
 - 可控制轮数、间隔和总运行时长；
 - 可选择下一轮 prompt 读取哪些记忆：摘要、日志、人工介入、当前产物；
+- 基础研究流程固定不可改，但可以在基础阶段之间插入自定义阶段，并为每个自定义阶段写独立 Prompt；
 - 人工介入聊天：消息写入 `.research/human_interventions.md`，下一轮 prompt 自动带上；
 - 编辑初始研究任务；
 - 通过左侧文件树浏览 `.research/` 下的论文、报告、实验和日志产物，并在独立页面大预览文本、图片、SVG 和 PDF；
@@ -90,6 +91,23 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 10. `internal_review`: 以审稿人视角检查创新性、证据、公平性、复现性和 LaTeX QA。
 
 每个阶段必须写 `.research/reports/<phase>.json`。只有当 `status` 为 `complete` 且必需产物存在时，控制器才会推进到下一阶段。
+
+基础阶段不能被删除、改名、禁用或重排。需要额外检查时，在 UI 里添加自定义阶段；自定义阶段保存在 `.research/workflow.json`，默认要求产出 `.research/custom/<phase>.md` 和 `.research/reports/<phase>.json`。
+
+阶段报告可以带自检路由：
+
+```json
+{
+  "route": {
+    "decision": "advance|repeat|jump_back|skip_next|jump_to",
+    "target_phase": "survey",
+    "reason": "为什么这样跳转更安全",
+    "confidence": 0.8
+  }
+}
+```
+
+控制器只接受有效阶段名。`repeat` 会重做当前阶段，`jump_back` 会回到前序阶段，`skip_next` 会跳过紧邻的下一阶段，`jump_to` 会跳到指定阶段。
 
 ## 科研绘图与论文写作
 

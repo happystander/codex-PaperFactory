@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shlex
 from dataclasses import dataclass
 from datetime import datetime
@@ -22,6 +23,15 @@ DEFAULT_RESEARCH_DIR = ".research"
 WORKFLOW_CONFIG = "workflow.json"
 COMPLETE_STATUSES = {"complete", "completed", "pass", "passed"}
 NON_ADVANCING_STATUSES = {"needs_more_work", "blocked", "failed", "error"}
+ROUTE_DECISIONS = {
+    "advance",
+    "repeat",
+    "redo",
+    "jump_back",
+    "jump_to",
+    "skip_next",
+    "skip_to",
+}
 
 
 @dataclass(frozen=True)
@@ -32,6 +42,9 @@ class Phase:
     required: tuple[str, ...]
     gate: str
     prompt_focus: tuple[str, ...]
+    kind: str = "base"
+    custom_prompt: str = ""
+    insert_after: str = ""
 
 
 PHASES: tuple[Phase, ...] = (
@@ -234,6 +247,13 @@ PHASES: tuple[Phase, ...] = (
 )
 
 PHASE_BY_KEY = {phase.key: phase for phase in PHASES}
+START_SENTINEL = "__start__"
+CUSTOM_PHASE_PREFIX = "custom_"
+SAFE_KEY_PATTERN = re.compile(r"[^a-z0-9_]+")
+CUSTOM_DEFAULT_GATE = (
+    "Custom phase prompt has been addressed, a concise result note exists, and "
+    "the custom phase report explains evidence, residual risks, and the next route."
+)
 
 
 def workflow_config_path(root: Path) -> Path:
@@ -247,43 +267,134 @@ def phase_config_dict(phase: Phase, *, enabled: bool = True) -> dict[str, Any]:
         "objective": phase.objective,
         "gate": phase.gate,
         "enabled": enabled,
+        "kind": "base",
+        "locked": True,
+        "insert_after": "",
+        "prompt": "",
     }
 
 
-def workflow_config_for_ui(root: Path) -> list[dict[str, Any]]:
-    """Return editable workflow rows, preserving disabled/customized phases."""
-    defaults = {phase.key: phase for phase in PHASES}
+def custom_required_paths(key: str) -> tuple[str, ...]:
+    return (f"custom/{key}.md", f"reports/{key}.json")
+
+
+def slugify_key(value: str, fallback: str = "phase") -> str:
+    slug = SAFE_KEY_PATTERN.sub("_", value.strip().lower()).strip("_")
+    slug = re.sub(r"_+", "_", slug)
+    if not slug:
+        slug = fallback
+    if not slug.startswith(CUSTOM_PHASE_PREFIX):
+        slug = f"{CUSTOM_PHASE_PREFIX}{slug}"
+    return slug[:80]
+
+
+def unique_custom_key(raw_key: str, title: str, seen: set[str]) -> str:
+    base = slugify_key(raw_key or title or "phase")
+    key = base
+    counter = 2
+    while key in seen or key in PHASE_BY_KEY:
+        suffix = f"_{counter}"
+        key = f"{base[:80 - len(suffix)]}{suffix}"
+        counter += 1
+    return key
+
+
+def valid_insert_after(value: str) -> str:
+    key = str(value or "").strip()
+    if key == START_SENTINEL:
+        return key
+    if key in PHASE_BY_KEY:
+        return key
+    return PHASES[-1].key
+
+
+def custom_phase_config_dict(
+    *,
+    key: str,
+    title: str,
+    prompt: str,
+    insert_after: str,
+    enabled: bool = True,
+    objective: str = "",
+    gate: str = "",
+) -> dict[str, Any]:
+    title = title.strip() or key
+    prompt = prompt.strip()
+    objective = objective.strip() or "Run the inserted user-defined research step."
+    gate = gate.strip() or CUSTOM_DEFAULT_GATE
+    return {
+        "key": key,
+        "title": title[:120],
+        "objective": objective[:500],
+        "gate": gate[:700],
+        "enabled": enabled,
+        "kind": "custom",
+        "locked": False,
+        "insert_after": valid_insert_after(insert_after),
+        "prompt": prompt[:8000],
+        "required": list(custom_required_paths(key)),
+    }
+
+
+def read_custom_phase_config(root: Path) -> list[dict[str, Any]]:
+    path = workflow_config_path(root)
+    if not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(raw, dict):
+        return []
+    raw_items: list[Any] = []
+    if isinstance(raw.get("custom_phases"), list):
+        raw_items = raw["custom_phases"]
+    elif isinstance(raw.get("phases"), list):
+        # Backward compatible read: old workflow files contained every base row.
+        # Base rows are now immutable, so only unknown/custom rows are retained.
+        raw_items = [
+            item
+            for item in raw["phases"]
+            if isinstance(item, dict)
+            and (item.get("kind") == "custom" or str(item.get("key") or "") not in PHASE_BY_KEY)
+        ]
+
     rows: list[dict[str, Any]] = []
     seen: set[str] = set()
-    path = workflow_config_path(root)
-    raw_items: list[Any] = []
-    if path.exists():
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            raw = {}
-        if isinstance(raw, dict) and isinstance(raw.get("phases"), list):
-            raw_items = raw["phases"]
     for item in raw_items:
         if not isinstance(item, dict):
             continue
-        key = str(item.get("key") or "")
-        if key not in defaults or key in seen:
-            continue
-        base = defaults[key]
-        rows.append(
-            {
-                "key": key,
-                "title": str(item.get("title") or base.title),
-                "objective": str(item.get("objective") or base.objective),
-                "gate": str(item.get("gate") or base.gate),
-                "enabled": bool(item.get("enabled", True)),
-            }
-        )
+        title = str(item.get("title") or item.get("key") or "Custom Phase")
+        key = unique_custom_key(str(item.get("key") or ""), title, seen)
         seen.add(key)
+        rows.append(
+            custom_phase_config_dict(
+                key=key,
+                title=title,
+                prompt=str(item.get("prompt") or item.get("custom_prompt") or ""),
+                insert_after=str(item.get("insert_after") or item.get("after") or PHASES[-1].key),
+                enabled=bool(item.get("enabled", True)),
+                objective=str(item.get("objective") or ""),
+                gate=str(item.get("gate") or ""),
+            )
+        )
+    return rows
+
+
+def workflow_config_for_ui(root: Path) -> list[dict[str, Any]]:
+    """Return the fixed base workflow with inserted custom phases."""
+    custom_rows = read_custom_phase_config(root)
+    by_anchor: dict[str, list[dict[str, Any]]] = {START_SENTINEL: []}
     for phase in PHASES:
-        if phase.key not in seen:
-            rows.append(phase_config_dict(phase))
+        by_anchor[phase.key] = []
+    for row in custom_rows:
+        by_anchor.setdefault(valid_insert_after(str(row.get("insert_after") or "")), []).append(row)
+
+    rows: list[dict[str, Any]] = []
+    rows.extend(by_anchor.get(START_SENTINEL, []))
+    for phase in PHASES:
+        rows.append(phase_config_dict(phase))
+        rows.extend(by_anchor.get(phase.key, []))
     return rows
 
 
@@ -294,52 +405,62 @@ def configured_phases(root: Path | None = None) -> tuple[Phase, ...]:
     for item in workflow_config_for_ui(root):
         if not item.get("enabled", True):
             continue
-        base = PHASE_BY_KEY[str(item["key"])]
-        phases.append(
-            Phase(
-                key=base.key,
-                title=str(item.get("title") or base.title),
-                objective=str(item.get("objective") or base.objective),
-                required=base.required,
-                gate=str(item.get("gate") or base.gate),
-                prompt_focus=base.prompt_focus,
+        key = str(item["key"])
+        if key in PHASE_BY_KEY:
+            base = PHASE_BY_KEY[key]
+            phases.append(base)
+        else:
+            prompt = str(item.get("prompt") or "").strip()
+            raw_required = item.get("required")
+            custom_required = (
+                tuple(str(rel) for rel in raw_required if str(rel).strip())
+                if isinstance(raw_required, list)
+                else custom_required_paths(key)
             )
-        )
+            phases.append(
+                Phase(
+                    key=key,
+                    title=str(item.get("title") or key),
+                    objective=str(item.get("objective") or "Run the inserted user-defined research step."),
+                    required=custom_required or custom_required_paths(key),
+                    gate=str(item.get("gate") or CUSTOM_DEFAULT_GATE),
+                    prompt_focus=(prompt or "Follow the user-defined prompt for this inserted phase.",),
+                    kind="custom",
+                    custom_prompt=prompt,
+                    insert_after=str(item.get("insert_after") or ""),
+                )
+            )
     return tuple(phases) or PHASES
 
 
 def write_workflow_config(root: Path, phases: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    defaults = {phase.key: phase for phase in PHASES}
-    rows: list[dict[str, Any]] = []
+    custom_rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in phases:
         if not isinstance(item, dict):
             continue
-        key = str(item.get("key") or "")
-        if key not in defaults or key in seen:
+        raw_key = str(item.get("key") or "")
+        if raw_key in PHASE_BY_KEY and item.get("kind") != "custom":
             continue
-        base = defaults[key]
-        title = str(item.get("title") or base.title).strip() or base.title
-        objective = str(item.get("objective") or base.objective).strip() or base.objective
-        gate = str(item.get("gate") or base.gate).strip() or base.gate
-        rows.append(
-            {
-                "key": key,
-                "title": title[:120],
-                "objective": objective[:500],
-                "gate": gate[:700],
-                "enabled": bool(item.get("enabled", True)),
-            }
-        )
+        title = str(item.get("title") or raw_key or "Custom Phase")
+        key = unique_custom_key(raw_key, title, seen)
         seen.add(key)
-    for phase in PHASES:
-        if phase.key not in seen:
-            rows.append(phase_config_dict(phase))
+        custom_rows.append(
+            custom_phase_config_dict(
+                key=key,
+                title=title,
+                prompt=str(item.get("prompt") or ""),
+                insert_after=str(item.get("insert_after") or item.get("after") or PHASES[-1].key),
+                enabled=bool(item.get("enabled", True)),
+                objective=str(item.get("objective") or ""),
+                gate=str(item.get("gate") or ""),
+            )
+        )
     workflow_config_path(root).write_text(
-        json.dumps({"schema_version": 1, "phases": rows}, indent=2, ensure_ascii=False) + "\n",
+        json.dumps({"schema_version": 2, "custom_phases": custom_rows}, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    return rows
+    return workflow_config_for_ui(root)
 
 
 def now() -> str:
@@ -385,6 +506,7 @@ def ensure_dirs(root: Path) -> None:
         "reviews",
         "reports",
         "pages",
+        "custom",
     ):
         (root / rel).mkdir(parents=True, exist_ok=True)
 
@@ -479,6 +601,65 @@ def can_advance(root: Path, phase: Phase) -> tuple[bool, list[str], str | None]:
     if normalized in NON_ADVANCING_STATUSES:
         return False, [f"reports/{phase.key}.json status is {status!r}"], status
     return False, [f"reports/{phase.key}.json status {status!r} is not an advancing status"], status
+
+
+def default_next_phase_key(phases: tuple[Phase, ...], old_key: str) -> str:
+    phase_keys = [item.key for item in phases]
+    if old_key in phase_keys:
+        idx = phase_keys.index(old_key)
+        return "complete" if idx + 1 >= len(phases) else phases[idx + 1].key
+    return phases[0].key if phases else "complete"
+
+
+def route_decision_for(root: Path, phase: Phase) -> dict[str, Any] | None:
+    report = report_for(root, phase)
+    if not report:
+        return None
+    raw = report.get("route") or report.get("routing") or report.get("phase_route")
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        raw = {"decision": raw}
+    if not isinstance(raw, dict):
+        return None
+    decision = str(raw.get("decision") or raw.get("action") or "advance").strip().lower()
+    if decision not in ROUTE_DECISIONS:
+        return None
+    return {
+        "decision": "repeat" if decision == "redo" else decision,
+        "target_phase": str(raw.get("target_phase") or raw.get("target") or "").strip(),
+        "reason": str(raw.get("reason") or "").strip(),
+        "confidence": raw.get("confidence"),
+    }
+
+
+def resolve_route(root: Path, phases: tuple[Phase, ...], old_key: str) -> tuple[str, dict[str, Any] | None]:
+    phase_keys = [item.key for item in phases]
+    default_next = default_next_phase_key(phases, old_key)
+    phase = next((item for item in phases if item.key == old_key), None)
+    route = route_decision_for(root, phase) if phase else None
+    if not route:
+        return default_next, None
+
+    decision = str(route["decision"])
+    next_key = default_next
+    if decision == "repeat":
+        next_key = old_key
+    elif decision == "skip_next":
+        if old_key in phase_keys:
+            idx = phase_keys.index(old_key)
+            next_key = "complete" if idx + 2 >= len(phases) else phases[idx + 2].key
+    elif decision in {"jump_back", "jump_to", "skip_to"}:
+        target = str(route.get("target_phase") or "")
+        if target in phase_keys or target == "complete":
+            next_key = target
+        else:
+            route = {**route, "ignored": True, "ignore_reason": f"unknown target_phase {target!r}"}
+            next_key = default_next
+    elif decision == "advance":
+        next_key = default_next
+
+    return next_key, {**route, "from_phase": old_key, "resolved_next_phase": next_key}
 
 
 def command_init(args: argparse.Namespace) -> int:
@@ -594,6 +775,15 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
         if companion_skills
         else ""
     )
+    custom_phase_text = ""
+    if phase.kind == "custom":
+        custom_phase_text = (
+            "\nThis is a user-inserted custom phase. Follow this phase prompt exactly unless it conflicts "
+            "with evidence safety or the fixed PaperFactory research gates:\n"
+            f"{phase.custom_prompt or phase.prompt_focus[0]}\n"
+            "\nWrite the custom phase result note to the required custom artifact path, then write the "
+            f"phase report at .research/reports/{phase.key}.json.\n"
+        )
     memory_config_path = root / "memory_config.json"
     if memory_config_path.exists():
         try:
@@ -662,16 +852,21 @@ User-visible progress feed:
 Phase focus:
 {focus_list}
 {companion_text}
+{custom_phase_text}
 {intervention_section}
 
 Operating rules:
 - Before acting, read the selected memory sources:
 {memory_list}
+- The base PaperFactory workflow is fixed. Treat user-inserted custom phases as extra checkpoints, not as permission to weaken required evidence gates.
 - Append concise audit entries to .research/logs/research.log with action, rationale, outcome, blocker if any, and next step.
 - Use primary sources for papers, repositories, datasets, benchmarks, and model cards. Verify recent or unstable facts before relying on them.
 - Do not invent citations, metrics, tables, or experiment outcomes.
 - Save raw outputs, commands, configs, metrics, and summaries under .research/ or clearly referenced project experiment directories.
 - Write .research/reports/{phase.key}.json. Set status to "complete" only if the gate is genuinely satisfied; otherwise use "needs_more_work" or "blocked".
+- In that report, include a self-check route object:
+  {{"decision":"advance|repeat|jump_back|skip_next|jump_to","target_phase":"<phase key or complete when needed>","reason":"<why this route is scientifically safer>","confidence":0.0}}
+- Use "repeat" when this phase should be redone, "jump_back" when an earlier fixed or custom phase must be revisited, "skip_next" only when the next phase is genuinely unnecessary, and "jump_to" only when you can name a valid target phase.
 - Finish the cycle by running: {controller_cmd} --research-dir {shell_quote(root)} advance
 """
 
@@ -701,24 +896,26 @@ def command_advance(args: argparse.Namespace) -> int:
 
     old_key = phase.key
     phases = configured_phases(root)
-    phase_keys = [item.key for item in phases]
-    if old_key in phase_keys:
-        idx = phase_keys.index(old_key)
-        next_key = "complete" if idx + 1 >= len(phases) else phases[idx + 1].key
-    else:
-        next_key = phases[0].key if phases else "complete"
+    next_key, route = resolve_route(root, phases, old_key)
     state.setdefault("phase_history", []).append(
         {
             "phase": old_key,
             "completed_at": iso_now(),
             "report_status": status,
             "forced": bool(args.force),
+            "next_phase": next_key,
+            "route": route,
         }
     )
+    if route:
+        state.setdefault("phase_routes", []).append({**route, "decided_at": iso_now()})
     state["phase"] = next_key
     write_state(root, state)
-    append_log(root, f"Outcome: advanced phase {old_key} -> {next_key}.")
+    route_note = f" route={route}" if route else ""
+    append_log(root, f"Outcome: advanced phase {old_key} -> {next_key}.{route_note}")
     print(f"Advanced phase: {old_key} -> {next_key}")
+    if route:
+        print(f"Route decision: {route.get('decision')} {route.get('reason') or ''}".rstrip())
     return 0
 
 

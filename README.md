@@ -130,6 +130,7 @@ The Web UI runs on localhost and supports:
 - Codex-authored progress messages from `.research/progress/feed.jsonl`; the chat stream does not synthesize progress, split on newlines, or display raw logs;
 - iteration time controls through cycle count, interval, and optional run duration;
 - selectable prompt memory for summary, logs, human interventions, and current artifacts;
+- locked base workflow phases, plus user-inserted custom phases with their own prompt, stored in `.research/workflow.json`;
 - human intervention messages saved to `.research/human_interventions.md` and injected into the next prompt;
 - editing the initial task stored in `.research/task.md` and `.research/state.json`;
 - browsing `.research/` artifacts from the file tree and opening a full-page preview for text, image, SVG, and PDF files;
@@ -137,6 +138,8 @@ The Web UI runs on localhost and supports:
 - automatic top-conference-style manuscript review in `internal_review` after paper drafting.
 
 Human intervention notes are applied on the next cycle. If an active `codex exec` process is already running, pause and restart when the note must take effect immediately.
+
+The base research workflow is intentionally fixed so quality gates cannot be accidentally weakened. Use the Web UI to insert custom checkpoints between base phases; each custom phase gets a prompt, a default note artifact under `.research/custom/`, and its own `.research/reports/<custom_phase>.json` report.
 
 ## Included Skills
 
