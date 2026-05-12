@@ -32,6 +32,7 @@ def main() -> int:
         proc = run(["--research-dir", str(rd), "init", "--task", "test task"], cwd)
         assert proc.returncode == 0, proc.stderr
         assert (rd / "state.json").exists()
+        assert (rd / "archive" / "cleanup").is_dir()
         (rd / "workflow.json").write_text(
             json.dumps(
                 {
@@ -54,6 +55,11 @@ def main() -> int:
         proc = run(["--research-dir", str(rd), "status"], cwd)
         assert proc.returncode == 0, proc.stderr
         assert "Phase: scope" in proc.stdout
+
+        proc = run(["--research-dir", str(rd), "next-prompt"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert "cleanup pass" in proc.stdout
+        assert ".research/archive/cleanup/scope/" in proc.stdout
 
         proc = run(["--research-dir", str(rd), "advance"], cwd)
         assert proc.returncode == 1

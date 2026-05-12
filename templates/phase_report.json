@@ -4,5 +4,11 @@
   "summary": "",
   "evidence": [],
   "risks": [],
-  "next": ""
+  "next": "",
+  "cleanup": {
+    "removed": [],
+    "archived": [],
+    "kept": [],
+    "notes": ""
+  }
 }

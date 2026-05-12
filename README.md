@@ -182,6 +182,7 @@ The base workflow is locked. Users can insert custom phases, but they cannot del
 | Insert custom phase | Use the Web UI workflow panel. Each custom phase has a title, insertion point, and prompt. |
 | Stored in | `.research/workflow.json` |
 | Default artifacts | `.research/custom/<phase>.md` and `.research/reports/<phase>.json` |
+| Phase cleanup | Each phase should remove obvious temporary files and archive uncertain files under `.research/archive/cleanup/<phase>/`. |
 | Base phases | Always kept and locked. |
 | Human intervention | Saved to `.research/human_interventions.md` and injected into the next prompt. |
 
@@ -264,6 +265,7 @@ paperfactory web --open
   paper/
   reviews/
   custom/
+  archive/cleanup/
 ```
 
 ### Skills
@@ -310,6 +312,7 @@ paperfactory web --open
 - Every paper figure needs source data, script, caption logic, and manifest entry.
 - Every structural diagram should preserve editable Draw.io sources.
 - Every main claim should map to evidence.
+- Cleanup must not delete raw outputs, source data, configs, logs, citations, or files needed to reproduce a result; archive uncertain files instead.
 
 ### Attribution
 
@@ -503,6 +506,7 @@ Web UI 启动的后台任务会把输出写入 `.research/logs/`。
 | 插入自定义阶段 | 在 Web UI 流程面板中添加。每个自定义阶段有名称、插入位置和 Prompt。 |
 | 保存位置 | `.research/workflow.json` |
 | 默认产物 | `.research/custom/<phase>.md` 和 `.research/reports/<phase>.json` |
+| 阶段清理 | 每阶段删除明确无用的临时文件；拿不准的文件归档到 `.research/archive/cleanup/<phase>/`。 |
 | 基础阶段 | 始终保留并锁定。 |
 | 人工介入 | 写入 `.research/human_interventions.md`，下一轮 prompt 自动带上。 |
 
@@ -585,6 +589,7 @@ paperfactory web --open
   paper/
   reviews/
   custom/
+  archive/cleanup/
 ```
 
 ### Skills
@@ -631,6 +636,7 @@ paperfactory web --open
 - 每个论文图都需要 source data、脚本、caption 逻辑和 manifest。
 - 每个结构图都应保留可编辑 Draw.io 源文件。
 - 每个主要 claim 都应能映射到证据。
+- 清理时不能删除原始输出、source data、配置、日志、引用或复现实验所需文件；不确定的文件应归档。
 
 ### 致谢
 

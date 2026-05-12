@@ -94,6 +94,8 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 
 基础阶段不能被删除、改名、禁用或重排。需要额外检查时，在 UI 里添加自定义阶段；自定义阶段保存在 `.research/workflow.json`，默认要求产出 `.research/custom/<phase>.md` 和 `.research/reports/<phase>.json`。
 
+每个阶段结束前，Codex 都应做一次安全清理：删除明确无用的临时文件、缓存、重复草稿、空文件和本阶段产生的废弃 scratch 输出；不要删除原始实验输出、source data、配置、日志、引用和任何复现实验所需文件。拿不准的文件移动到 `.research/archive/cleanup/<phase>/`，并在阶段报告的 `cleanup` 字段里说明。
+
 阶段报告可以带自检路由：
 
 ```json

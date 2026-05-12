@@ -12,6 +12,12 @@ Each report lives at `.research/reports/<phase>.json`:
   "evidence": ["relative/path/to/artifact"],
   "risks": ["Known limitations"],
   "next": "Next concrete action",
+  "cleanup": {
+    "removed": ["relative/path/to/temp-file"],
+    "archived": ["archive/cleanup/scope/old-scratch.md"],
+    "kept": ["relative/path/to/raw-output"],
+    "notes": "Raw outputs and required artifacts were preserved."
+  },
   "route": {
     "decision": "advance",
     "target_phase": "",
@@ -38,12 +44,15 @@ Optional route decisions:
 
 The base workflow is locked. `.research/workflow.json` stores only user-inserted custom phases, each with a prompt and default artifacts under `.research/custom/` plus `.research/reports/<custom_phase>.json`.
 
+Every phase should finish with a cleanup pass. Remove only obvious temporary files, caches, duplicate drafts, empty files, and obsolete scratch outputs created by that phase. When a file may have evidence or reproducibility value, move it to `.research/archive/cleanup/<phase>/` instead of deleting it, and record the reason in the phase report `cleanup` object.
+
 Core artifact rules:
 
 - Use real experiment scripts and raw outputs for metrics.
 - Keep proxy experiments clearly labeled as proxy.
 - Save failed runs and negative results.
 - Do not overwrite raw outputs when summarizing.
+- Do not delete raw outputs, source data, configs, logs, references, or files required to reproduce a result during cleanup.
 - Store paper claims only after the supporting artifact exists.
 - Pair every paper figure with `.research/figures/figure_plan.md`, source data, plotting script, and `.research/figures/source_data_manifest.json`.
 - Pair every structural Draw.io diagram with `.drawio`, `.spec.yaml`, `.arch.json`, and `.svg`; track these in `.research/figures/drawio_bundle_manifest.json`.

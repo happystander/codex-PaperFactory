@@ -507,6 +507,7 @@ def ensure_dirs(root: Path) -> None:
         "reports",
         "pages",
         "custom",
+        "archive/cleanup",
     ):
         (root / rel).mkdir(parents=True, exist_ok=True)
 
@@ -863,6 +864,9 @@ Operating rules:
 - Use primary sources for papers, repositories, datasets, benchmarks, and model cards. Verify recent or unstable facts before relying on them.
 - Do not invent citations, metrics, tables, or experiment outcomes.
 - Save raw outputs, commands, configs, metrics, and summaries under .research/ or clearly referenced project experiment directories.
+- Before finishing this phase, run a cleanup pass. Remove only obvious temporary files, caches, duplicate drafts, empty files, and obsolete scratch outputs created by this phase. Never delete required artifacts, raw experiment outputs, source data, citations, configs, logs, or files needed to reproduce a result.
+- If a file may have evidence value but should leave the active folder, move it to .research/archive/cleanup/{phase.key}/ with a short reason instead of deleting it.
+- Record cleanup in .research/reports/{phase.key}.json under "cleanup": {{"removed":["..."],"archived":["..."],"kept":["..."],"notes":"..."}}. Use empty lists when nothing needed cleanup.
 - Write .research/reports/{phase.key}.json. Set status to "complete" only if the gate is genuinely satisfied; otherwise use "needs_more_work" or "blocked".
 - In that report, include a self-check route object:
   {{"decision":"advance|repeat|jump_back|skip_next|jump_to","target_phase":"<phase key or complete when needed>","reason":"<why this route is scientifically safer>","confidence":0.0}}
