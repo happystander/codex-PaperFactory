@@ -66,15 +66,15 @@ The runner calls `codex exec --full-auto --skip-git-repo-check` once per interva
 The controller advances only when required artifacts exist and the phase report is complete:
 
 1. `scope`: research target, exclusions, venue/domain, datasets, metrics, compute, success criteria.
-2. `survey`: primary-source papers, official repos, datasets, leaderboards, baseline matrix, novelty gap.
-3. `data_sanity`: dataset cards, split checks, leakage risks, evaluation protocol.
+2. `survey`: primary-source papers, official repos, 5-8 inspected reference codebases, datasets, leaderboards, baseline matrix, novelty gap.
+3. `data_sanity`: dataset cards, benchmark profile, split checks, leakage risks, evaluation protocol.
 4. `cheap_baselines`: simple but strong baselines under the exact target protocol.
-5. `method_design`: gap-driven method, staged escalation, falsifying ablations.
-6. `method_smoke`: minimal method implementation and smoke-test evidence.
-7. `advanced_comparison`: fair comparison to strong baselines or released checkpoints.
-8. `paper_evidence`: main results, ablations, failure cases, figure plan, source-data manifest.
-9. `paper_drafting`: paper and appendix written only from completed evidence.
-10. `internal_review`: reviewer-style check for novelty, evidence, fairness, and reproducibility.
+5. `method_design`: gap-driven method, atomic concept decomposition, implementation plan, staged escalation, falsifying ablations.
+6. `method_smoke`: minimal self-contained method implementation, project manifest, and smoke-test evidence.
+7. `advanced_comparison`: fair comparison to strong baselines or released checkpoints, with judge/refine audit.
+8. `paper_evidence`: main results, ablations, failure cases, experiment analysis, figure plan, source-data manifest.
+9. `paper_drafting`: claim-to-evidence map, issues-style writing contract, LaTeX/BibTeX source, paper, and appendix written only from completed evidence.
+10. `internal_review`: reviewer-style check for novelty, evidence, fairness, reproducibility, LaTeX QA, and atomic concept support.
 
 ## Daily Commands
 
@@ -110,7 +110,7 @@ Check local dependencies and generate the project UI:
 /path/to/codex-PaperFactory/paperfactory web --open
 ```
 
-Chinese usage notes are in `docs/usage.zh.md`; launcher and dashboard details are in `docs/local-ui.md`.
+Chinese usage notes are in `docs/usage.zh.md`; launcher and dashboard details are in `docs/local-ui.md`. The AI-Researcher-inspired workflow additions are documented in `docs/ai-researcher-adaptation.md`; the `latex-paper-skills` writing integration is documented in `docs/latex-paper-skills-adaptation.md`.
 
 ## Interactive Web UI
 
@@ -151,6 +151,11 @@ Human intervention notes are applied on the next cycle. If an active `codex exec
 - `manuscript-audit`: reviewer-style audit, submission gate, issue bundle, and revision roadmap.
 - `reviewer-response`: point-by-point response letters, response trackers, and manuscript change checklists.
 - `presentation-deck`: paper-sharing, lab meeting, conference talk, and PPT-ready storyboard generation.
+- `paper-from-zero`: topic brief, contribution map, evidence matrix, and review/empirical paper routing from `latex-paper-skills`.
+- `empirical-paper-writer`: issue-driven empirical paper drafting with result states and evidence-safe claims.
+- `arxiv-paper-writer`: review-paper workflow plus reusable citation, source ranking, style, and compile scripts.
+- `results-backfill`: verified-result backfill from experiment outputs into the paper.
+- `latex-rhythm-refiner`: final prose rhythm pass while preserving citations and verified numbers.
 
 ## Plotting Utility
 
@@ -197,6 +202,7 @@ Run a lightweight mechanical check before deeper review:
 - Do not draft a paper before `paper_evidence` is complete.
 - Every paper figure needs source data, plotting script, caption logic, and manifest entry.
 - Every citation should map to a specific claim and support grade.
+- Every late-stage paper should keep a writing issue contract and LaTeX QA record.
 - If protocols differ, mark the comparison diagnostic rather than final.
 
 ## Attribution

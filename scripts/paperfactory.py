@@ -554,6 +554,32 @@ def command_doctor(args: argparse.Namespace) -> int:
     except Exception:
         checks.append(("matplotlib", "WARN", "not installed; plotting helper will fail"))
 
+    skills_root = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "skills"
+    latex_skill_names = (
+        "paper-from-zero",
+        "arxiv-paper-writer",
+        "empirical-paper-writer",
+        "latex-rhythm-refiner",
+        "results-backfill",
+    )
+    for skill_name in latex_skill_names:
+        skill_file = skills_root / skill_name / "SKILL.md"
+        checks.append(
+            (
+                f"skill:{skill_name}",
+                "OK" if skill_file.exists() else "WARN",
+                str(skill_file) if skill_file.exists() else "install from yunshenwuchuxun/latex-paper-skills",
+            )
+        )
+    shared_utils = skills_root / "_shared" / "paper_utils.py"
+    checks.append(
+        (
+            "skill:_shared",
+            "OK" if shared_utils.exists() else "WARN",
+            str(shared_utils) if shared_utils.exists() else "required by latex-paper-skills scripts",
+        )
+    )
+
     for name, status, detail in checks:
         print(f"{status:5} {name:16} {detail}")
     return 1 if any(status == "ERROR" for _, status, _ in checks) else 0

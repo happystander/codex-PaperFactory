@@ -53,13 +53,16 @@ PHASES: tuple[Phase, ...] = (
         required=(
             "literature/reading_list.md",
             "literature/baseline_matrix.md",
+            "literature/reference_codebases.md",
             "literature/novelty_gap.md",
             "reports/survey.json",
         ),
-        gate="Survey covers recent papers, official repositories, datasets, leaderboards, checkpoint availability, protocol details, reproduction cost, and fairness risks.",
+        gate="Survey covers recent papers, official repositories, 5-8 inspected reference codebases, datasets, leaderboards, checkpoint availability, protocol details, reproduction cost, and fairness risks.",
         prompt_focus=(
             "Search broadly using primary sources and verify recent or unstable facts.",
             "Use paper-reader for source-grounded paper notes and citation-workflow for local bibliography/citation mapping.",
+            "Run an AI-Researcher-style Prepare step: select 5-8 reference codebases by relevance, recency, reproducibility, readability, and implementation coverage.",
+            "Write the reference codebase matrix with repository URL, paper link if any, license, install status, runnable entry points, reusable ideas, and reasons to exclude weak repos.",
             "Record conceptual SOTA separately from reproducible SOTA.",
             "State the nearest prior work and the precise unsolved gap.",
         ),
@@ -68,10 +71,11 @@ PHASES: tuple[Phase, ...] = (
         key="data_sanity",
         title="Data Sanity",
         objective="Verify the real dataset or explicitly mark a proxy before experiments.",
-        required=("data/data_card.md", "data/protocol.md", "reports/data_sanity.json"),
-        gate="Data card records formats, counts, splits, labels, leakage checks, candidate construction, negative sampling, and metric protocol.",
+        required=("data/data_card.md", "data/benchmark_profile.md", "data/protocol.md", "reports/data_sanity.json"),
+        gate="Data card and benchmark profile record formats, counts, splits, labels, leakage checks, candidate construction, negative sampling, baseline/comparison/evaluation candidates, and metric protocol.",
         prompt_focus=(
             "Load or inspect the real dataset when available.",
+            "Write a benchmark profile: dataset, baseline floor, comparison targets, evaluation metrics, and domain-specific constraints.",
             "Write exact split and metric protocol.",
             "Flag proxy data clearly and do not let it redefine the research target.",
         ),
@@ -96,10 +100,19 @@ PHASES: tuple[Phase, ...] = (
         key="method_design",
         title="Method Design",
         objective="Design a staged method only after the gap and baseline floor are known.",
-        required=("method/method_design.md", "experiments/method_smoke/plan.md", "reports/method_design.json"),
-        gate="Method design states the new signal/objective/architecture/inference change, why it should help, and what ablation can falsify it.",
+        required=(
+            "method/atomic_concepts.md",
+            "method/method_design.md",
+            "method/implementation_plan.md",
+            "experiments/method_smoke/plan.md",
+            "reports/method_design.json",
+        ),
+        gate="Method design decomposes the innovation into atomic concepts, states the new signal/objective/architecture/inference change, maps each concept to papers and implementation hooks, and names ablations that can falsify it.",
         prompt_focus=(
             "Compare against the nearest prior work before naming the contribution.",
+            "Break the innovation into atomic academic definitions; for each record math, paper trace, code trace, implementation hook, and falsifying ablation.",
+            "Write a concrete implementation plan covering data processing, model, training, testing, commands, expected outputs, and low-budget smoke settings.",
+            "Do not directly import reference repositories into the final method; adapt the ideas into self-contained code with attribution notes.",
             "Design a lightweight first version and a clear escalation path.",
             "Specify ablations and failure criteria before running expensive experiments.",
         ),
@@ -109,13 +122,16 @@ PHASES: tuple[Phase, ...] = (
         title="Method Smoke Test",
         objective="Run the minimal method path and diagnose whether there is a promising signal.",
         required=(
+            "experiments/method_smoke/project_manifest.md",
             "experiments/method_smoke/result.md",
             "experiments/method_smoke/metrics.json",
             "reports/method_smoke.json",
         ),
-        gate="Smoke test executes the method path on real or explicitly marked proxy data and compares against the strongest cheap baseline.",
+        gate="Smoke test executes a self-contained minimal method path on real or explicitly marked proxy data, records the runnable project manifest, and compares against the strongest cheap baseline.",
         prompt_focus=(
             "Implement the smallest method path that tests the central hypothesis.",
+            "When building method code, keep a clear data/model/training/testing/data_processing/run_training_testing.py-style structure unless the project already has a stronger established layout.",
+            "Run a very small first experiment, such as a two-epoch or otherwise low-budget smoke run, before longer training.",
             "Run a small experiment with saved command, config, outputs, and metrics.",
             "If it fails, preserve the failure and propose a concrete repair rather than hiding it.",
         ),
@@ -126,13 +142,16 @@ PHASES: tuple[Phase, ...] = (
         objective="Compare to strong baselines fairly once the method has a signal.",
         required=(
             "baselines/advanced_comparison.md",
+            "experiments/advanced_comparison/refinement_plan.md",
             "experiments/advanced_comparison/metrics.json",
             "reports/advanced_comparison.json",
         ),
-        gate="Advanced comparison uses released checkpoints or justified reproduction with matched protocol, or clearly records why escalation is not yet justified.",
+        gate="Advanced comparison uses released checkpoints or justified reproduction with matched protocol, includes a judge/refinement pass against the atomic concepts and protocol, or clearly records why escalation is not yet justified.",
         prompt_focus=(
+            "Run a judge/refinement pass before escalation: audit implementation against atomic concepts, protocol, and reference codebases, then save the repair or refinement plan.",
             "Prefer released checkpoints and official evaluation code when possible.",
             "Retrain only when checkpoints are unavailable or protocol-incompatible.",
+            "After each advanced run, analyze why the result changed and whether the next experiment is justified.",
             "Mark any non-identical comparison as diagnostic instead of final.",
         ),
     ),
@@ -146,12 +165,14 @@ PHASES: tuple[Phase, ...] = (
             "results/main_results.md",
             "results/ablations.md",
             "results/failure_cases.md",
+            "results/experiment_analysis.md",
             "reports/paper_evidence.json",
         ),
-        gate="Evidence includes main results, ablations, robustness or failure cases, statistics or multi-seed checks when appropriate, and reproducibility notes.",
+        gate="Evidence includes main results, ablations, robustness or failure cases, experiment analysis, statistics or multi-seed checks when appropriate, and reproducibility notes.",
         prompt_focus=(
             "Turn raw metrics into tables with protocol details.",
             "Use the scientific-figure skill to plan paper figures and source-data traceability.",
+            "Write an experiment-analysis note that explains observed gains, failures, confounders, and justified follow-up experiments.",
             "Add ablations that test the claimed mechanism.",
             "Include negative results and boundaries that matter for honest claims.",
         ),
@@ -160,11 +181,24 @@ PHASES: tuple[Phase, ...] = (
         key="paper_drafting",
         title="Paper Drafting",
         objective="Draft a paper and appendix from existing evidence only.",
-        required=("paper/paper_draft.md", "paper/appendix.md", "paper/availability.md", "reports/paper_drafting.json"),
+        required=(
+            "paper/claim_evidence_map.md",
+            "paper/writing_issues.csv",
+            "paper/paper_draft.md",
+            "paper/main.tex",
+            "paper/ref.bib",
+            "paper/appendix.md",
+            "paper/availability.md",
+            "reports/paper_drafting.json",
+        ),
         gate="Draft cites artifact-backed evidence for each main claim and includes limitations and reproducibility details.",
         prompt_focus=(
             "Use the conference-paper-writing skill to build a claim-to-evidence map before prose.",
+            "Use latex-paper-skills when available: paper-from-zero for routing, empirical-paper-writer for experimental papers, arxiv-paper-writer for review papers, results-backfill for verified result upgrades, and latex-rhythm-refiner after content stabilizes.",
+            "Create an issues-style writing contract in paper/writing_issues.csv; track section tasks, dependencies, citation verification, evidence status, and placeholder/result status.",
             "Use citation-workflow for citation support checks, data-availability for availability wording, and academic-polishing for final language passes.",
+            "Draft section-by-section with checkpoints: methodology, related work, experiments, introduction, conclusion, then abstract.",
+            "Produce LaTeX source and BibTeX alongside the Markdown draft; compile or record why compilation is unavailable.",
             "Write from claims to evidence: every main claim needs a table, figure, theorem, or appendix artifact.",
             "Use cautious language for bounded or diagnostic evidence.",
             "Do not invent citations, results, or unavailable baselines.",
@@ -177,13 +211,17 @@ PHASES: tuple[Phase, ...] = (
         required=(
             "reviews/internal_review.md",
             "reviews/top_conference_review.md",
+            "paper/latex_qa.md",
             "paper/camera_ready_checklist.md",
             "reports/internal_review.json",
         ),
         gate="Review identifies blocking gaps, overclaims, missing baselines, reproducibility holes, and required revisions; completion means no blocking issues remain or they are explicitly scoped out.",
         prompt_focus=(
             "Review as a skeptical program committee member.",
+            "Audit every atomic concept against the implemented code, ablations, and paper claims.",
             "Use manuscript-audit as a top-conference reviewer after paper_drafting is complete, and write reviews/top_conference_review.md.",
+            "Use latex-paper-skills QA where available: issue_workflow audit, citation_policy audit-bib/audit-tex, source_ranker, style_profile, compile_paper, and record results in paper/latex_qa.md.",
+            "Run latex-rhythm-refiner only after claim support, citations, and numbers are stable; preserve citation positions and verified numeric claims.",
             "Check whether a stronger baseline would invalidate the main claim.",
             "If blockers remain, set report status to needs_more_work and route back manually in the summary.",
         ),
@@ -401,6 +439,8 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     focus_list = "\n".join(f"- {item}" for item in phase.prompt_focus)
     controller_cmd = f"python {shell_quote(controller)}"
     companion_skills = []
+    if phase.key in {"survey", "data_sanity", "method_design", "method_smoke", "advanced_comparison"}:
+        companion_skills.append("auto-research")
     if phase.key == "survey":
         companion_skills.extend(["paper-reader", "citation-workflow"])
     if phase.key == "paper_evidence":
@@ -408,9 +448,30 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     if phase.key in {"paper_drafting", "internal_review"}:
         companion_skills.append("conference-paper-writing")
     if phase.key == "paper_drafting":
-        companion_skills.extend(["academic-polishing", "latex-typst-paper", "citation-workflow", "data-availability"])
+        companion_skills.extend(
+            [
+                "paper-from-zero",
+                "empirical-paper-writer",
+                "arxiv-paper-writer",
+                "results-backfill",
+                "latex-rhythm-refiner",
+                "academic-polishing",
+                "latex-typst-paper",
+                "citation-workflow",
+                "data-availability",
+            ]
+        )
     if phase.key == "internal_review":
-        companion_skills.extend(["manuscript-audit", "latex-typst-paper", "data-availability"])
+        companion_skills.extend(
+            [
+                "manuscript-audit",
+                "latex-rhythm-refiner",
+                "arxiv-paper-writer",
+                "empirical-paper-writer",
+                "latex-typst-paper",
+                "data-availability",
+            ]
+        )
     companion_text = (
         "\nCompanion skills to apply this phase:\n" + "\n".join(f"- {skill}" for skill in companion_skills)
         if companion_skills

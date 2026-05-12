@@ -86,8 +86,8 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 6. `method_smoke`: 最小方法路径烟测。
 7. `advanced_comparison`: 公平比较高级 baseline 或官方 checkpoint。
 8. `paper_evidence`: 整理主结果、消融、鲁棒性、失败边界、复现信息，并用 `scientific-figure` 规划论文图和 source-data manifest。
-9. `paper_drafting`: 只基于已有证据写论文和 appendix，并用 `conference-paper-writing` 控制会议论文表达。
-10. `internal_review`: 以审稿人视角检查创新性、证据、公平性和复现性。
+9. `paper_drafting`: 只基于已有证据写论文和 appendix，同时生成写作 issue 合同、LaTeX/BibTeX 源文件，并用 `conference-paper-writing` 与 `latex-paper-skills` 控制论文表达。
+10. `internal_review`: 以审稿人视角检查创新性、证据、公平性、复现性和 LaTeX QA。
 
 每个阶段必须写 `.research/reports/<phase>.json`。只有当 `status` 为 `complete` 且必需产物存在时，控制器才会推进到下一阶段。
 
@@ -103,6 +103,11 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 - `manuscript-audit`: 做审稿人式内审、投稿 gate 和 revision roadmap。
 - `reviewer-response`: 收到审稿意见后写逐点回复和修改清单。
 - `presentation-deck`: 把论文或研究证据整理成组会/汇报/答辩用 storyboard。
+- `paper-from-zero`: 来自 `latex-paper-skills`，做 topic brief、contribution map、evidence matrix 和综述/实证论文路由。
+- `empirical-paper-writer`: 来自 `latex-paper-skills`，做实证论文的 issue 合同、结果状态和证据安全写作。
+- `arxiv-paper-writer`: 来自 `latex-paper-skills`，做综述论文和 LaTeX/BibTeX/引用/编译脚本复用。
+- `results-backfill`: 来自 `latex-paper-skills`，只用已验证实验结果回填占位符和升级结论。
+- `latex-rhythm-refiner`: 来自 `latex-paper-skills`，在引用和数值稳定后做最终文本节奏润色。
 
 快速生成一个指标图：
 

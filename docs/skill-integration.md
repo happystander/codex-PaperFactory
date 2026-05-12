@@ -23,18 +23,24 @@ The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (f
 | `manuscript-audit` | `paper-audit`, source-aware paper skills | Reviewer-style gate and revision roadmap |
 | `reviewer-response` | `nature-response` | Point-by-point response packages |
 | `presentation-deck` | `nature-paper2ppt`, figure/story rules | Paper-to-talk storyboard/PPT-ready planning |
+| `paper-from-zero` | `yunshenwuchuxun/latex-paper-skills` | Topic brief, contribution map, evidence matrix, and review/empirical routing |
+| `empirical-paper-writer` | `yunshenwuchuxun/latex-paper-skills` | Evidence-first empirical paper contract, result status, issue-driven writing |
+| `arxiv-paper-writer` | `yunshenwuchuxun/latex-paper-skills` | Review paper workflow plus reusable LaTeX, BibTeX, citation, and compile scripts |
+| `results-backfill` | `yunshenwuchuxun/latex-paper-skills` | Replace placeholders with verified experiment results and generate result material |
+| `latex-rhythm-refiner` | `yunshenwuchuxun/latex-paper-skills` | Final prose rhythm pass that preserves citation positions and verified numbers |
 
 ## Deliberately Not Integrated
 
 - Product/API/platform skills unrelated to academic writing.
 - Domain-specific life-science database skills, because PaperFactory should stay field-agnostic.
-- Full external scripts that depend on their original plugin layout. PaperFactory instead includes small stdlib helpers where useful.
+- External scripts that are not writing-critical. The `latex-paper-skills` writing engine is installed as a sibling skill bundle instead of being vendored wholesale into this repository.
 
 ## Added Local Helpers
 
 - `scripts/bib_query.py`: dependency-free BibTeX search and citation snippets.
 - `scripts/manuscript_check.py`: lightweight manuscript hygiene checks.
 - `scripts/make_metric_plot.py`: simple metric plotting with paper-style exports.
+- `paperfactory doctor`: checks whether the external `latex-paper-skills` bundle and its `_shared` runtime helpers are installed.
 
 ## Maintenance Rule
 
