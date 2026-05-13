@@ -39,7 +39,7 @@ flowchart LR
 | Memory transfer | Generated `.research/memory/` handoff, artifact index, phase summaries, route decisions, risks, and claim/evidence notes. |
 | Quality gates | Fixed base workflow with explicit required artifacts, reviewer gates, retry budgets, and stop/success conditions. |
 | Runtime control | State-machine snapshot, task queue, evidence registry, intervention patches, and stop decisions under `.research/`. |
-| Human control | Chinese Web UI for start/pause, status, runtime control, file preview, memory mode, custom phases, and intervention notes. |
+| Human control | Chinese-by-default Web UI with Chinese/English switching, start/pause, status, runtime control, file preview, memory mode, custom phases, and intervention notes. |
 | Codex visibility | Codex-authored natural-language progress feed, Codex status, PID, last activity, and token/quota snapshot when available. |
 | Research workflow | Scope, survey, data sanity, baselines, method design, smoke tests, advanced comparisons, evidence, drafting, review. |
 | Writing and figures | Scientific plots, Draw.io editable diagram bundles, LaTeX/BibTeX drafting checkpoints, and top-conference-style internal review. |
@@ -165,6 +165,8 @@ The Web UI writes run output under `.research/logs/`.
 
 The Web UI also shows the runtime layer directly: current state-machine node, pending queue item, paper-safe claim count, stop decision, and pending intervention patches. These views are backed by `.research/workflow_state.json`, `.research/queue/tasks.jsonl`, `.research/evidence/registry.json`, `.research/control/stop_conditions.json`, and `.research/interventions/patches.jsonl`.
 
+The language buttons default to Chinese. Switching to English updates the UI and writes `.research/ui_config.json`; the next generated Codex prompt then requires user-facing progress updates, phase pages, stage replies, and review summaries to use English. Switching back restores Simplified Chinese output for later cycles.
+
 ### Fixed Base Workflow
 
 The base workflow is locked. Users can insert custom phases, but they cannot delete, reorder, or weaken the base quality gates.
@@ -264,6 +266,7 @@ paperfactory web --open
   state.json
   workflow_state.json
   workflow.json
+  ui_config.json
   task.md
   human_interventions.md
   progress/feed.jsonl
@@ -388,7 +391,7 @@ flowchart LR
 | 记忆传输 | 自动生成 `.research/memory/`：阶段交接、产物索引、阶段摘要、跳转决策、风险和 claim/evidence 线索。 |
 | 质量门禁 | 固定主干工作流，每阶段必须产生必要产物，并结合审稿门禁、重试预算和停止/成功条件。 |
 | 运行时控制 | `.research/` 下持久化状态机快照、任务队列、证据注册表、介入补丁和停止判定。 |
-| 人工控制 | 中文 Web UI 支持启动/暂停、状态查看、运行时控制、文件预览、记忆模式、自定义阶段和人工介入。 |
+| 人工控制 | Web UI 默认中文，支持中英文切换、启动/暂停、状态查看、运行时控制、文件预览、记忆模式、自定义阶段和人工介入。 |
 | Codex 可视化 | 展示 Codex 自己写入的自然语言进展、运行 PID、最后活动、Codex 状态和余量。 |
 | 科研流程 | 范围定义、综述、数据检查、基线、方法设计、烟测、高级比较、证据整理、写作、内审。 |
 | 写作与图表 | 科研绘图、Draw.io 可编辑图表 bundle、LaTeX/BibTeX 写作检查点、顶会审稿式内审。 |
@@ -514,6 +517,8 @@ Web UI 启动的后台任务会把输出写入 `.research/logs/`。
 
 Web UI 会直接展示运行时层：当前状态机节点、下一条队列任务、可写 claim 数量、停止判定和待处理人工介入补丁。对应文件是 `.research/workflow_state.json`、`.research/queue/tasks.jsonl`、`.research/evidence/registry.json`、`.research/control/stop_conditions.json` 和 `.research/interventions/patches.jsonl`。
 
+语言按钮默认中文。切换到 English 后，UI 会变为英文，并写入 `.research/ui_config.json`；下一轮生成的 Codex prompt 会要求 Codex 用英文写进展、阶段展示页、阶段回复和审稿摘要。切回中文后，后续循环恢复简体中文输出。
+
 ### 固定主干工作流
 
 基础工作流是锁定的。用户可以插入自定义阶段，但不能删除、重排或削弱基础科研门禁。
@@ -613,6 +618,7 @@ paperfactory web --open
   state.json
   workflow_state.json
   workflow.json
+  ui_config.json
   task.md
   human_interventions.md
   progress/feed.jsonl

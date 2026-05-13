@@ -67,9 +67,13 @@ def main() -> int:
             assert "自定义方法/阶段" in index
             assert "标准记忆" in index
             assert "formatMessageTime" in index
-            assert "时间 ${time}" in index
+            assert "${t('time')} ${time}" in index
             assert "运行时控制" in index
             assert "runtimeDetails" in index
+            assert "langZhBtn" in index
+            assert "langEnBtn" in index
+            assert "User-facing language" not in index
+            assert "What Codex Is Doing" in index
 
             status = fetch_json(base + "/api/status")
             assert status["phase"]["key"] == "scope"
@@ -82,6 +86,23 @@ def main() -> int:
             phase_page = fetch_text(base + "/phase?key=scope")
             assert "Research Scope" in phase_page
             assert "必需产物" in phase_page
+
+            ui = fetch_json(base + "/api/ui-config")
+            assert ui["language"] == "zh"
+            ui = fetch_json(base + "/api/ui-config", {"language": "en"})
+            assert ui["language"] == "en"
+            phase_page_en = fetch_text(base + "/phase?key=scope")
+            assert '<html lang="en">' in phase_page_en
+            assert "Back to Console" in phase_page_en
+            prompt_en = fetch_json(base + "/api/prompt", {})
+            assert "User-facing language: English." in prompt_en["prompt"]
+            review_prompt_en = fetch_json(base + "/api/review/prompt", {})
+            assert "User-facing language: English." in review_prompt_en["prompt"]
+            ui = fetch_json(base + "/api/ui-config", {"language": "zh"})
+            assert ui["language"] == "zh"
+            prompt_zh = fetch_json(base + "/api/prompt", {})
+            assert "User-facing language: Simplified Chinese." in prompt_zh["prompt"]
+            assert (root / "ui_config.json").exists()
 
             workflow = fetch_json(base + "/api/workflow")
             assert workflow["phases"][0]["key"] == "scope"

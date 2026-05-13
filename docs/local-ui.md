@@ -39,8 +39,9 @@ The interactive UI starts a local server. The default page is a concise Chinese 
 It provides:
 
 - start/pause buttons for autonomous Codex cycles;
+- Chinese/English language buttons, defaulting to Chinese; the selected language is saved in `.research/ui_config.json` and controls later Codex user-facing progress, phase pages, stage replies, and review summaries;
 - detached background execution, so a started run continues after the browser tab or Web UI server is closed;
-- a concise Chinese agent-style interface with explicit running state, PID, last activity, a left-side file tree, and a phase flow;
+- a concise agent-style interface with explicit running state, PID, last activity, a left-side file tree, and a phase flow;
 - per-phase display pages at `/phase?key=<phase>`, backed by `.research/pages/<phase>.md` when Codex has written one and by a fallback artifact/report summary otherwise;
 - a locked base workflow plus user-inserted custom phases; custom phase prompts live in `.research/workflow.json` and affect later prompt generation and phase advancement;
 - project switching across nearby `.research/` workspaces, so each research task can keep its own prompt memory settings;

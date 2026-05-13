@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from paperfactory_core import control, evidence, interventions, memory as memory_core, task_queue, workflow
+from paperfactory_core import control, evidence, interventions, memory as memory_core, task_queue, ui_config, workflow
 
 
 STATE_VERSION = 1
@@ -789,10 +789,12 @@ def shell_quote(path: Path) -> str:
 def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     phase = current_phase(state, root)
     runtime = refresh_runtime(root, state)
+    language_instruction = ui_config.language_instruction(root)
     controller = Path(__file__).resolve()
     tools_doc = controller.parents[1] / "docs" / "open-research-tooling.md"
     if phase is None:
         return (
+            f"{language_instruction}\n\n"
             "The autonomous research project is marked complete. Read .research/reviews/internal_review.md "
             "and .research/paper/camera_ready_checklist.md, then report residual risks only."
         )
@@ -968,6 +970,8 @@ Research directory: {root}
 Initial task: {state.get("task", "")}
 Current phase: {phase.key} - {phase.title}
 Objective: {phase.objective}
+
+{language_instruction}
 
 Gate:
 {phase.gate}

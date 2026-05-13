@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import researchctl
-from paperfactory_core import control, evidence, interventions, task_queue
+from paperfactory_core import control, evidence, interventions, task_queue, ui_config
 from paperfactory_core.web_memory import read_memory_config, write_memory_config
 
 
@@ -908,6 +908,7 @@ def build_review_prompt(root: Path, venue: str, draft_path: str, mode: str = "de
     state = researchctl.load_state(root)
     draft = draft_path.strip() or "paper/paper_draft.md"
     output = ".research/reviews/top_conference_review.md"
+    language_instruction = ui_config.language_instruction(root)
     return f"""Use the manuscript-audit skill as a skeptical {venue or "top-tier ML/AI conference"} reviewer.
 
 Research directory: {root}
@@ -915,6 +916,8 @@ Initial task: {state.get("task", "")}
 Review mode: {mode}
 Manuscript or draft path: {draft}
 Write the review to: {output}
+
+{language_instruction}
 
 Instructions:
 - Read .research/state.json, .research/task.md, .research/logs/research.log, and available paper/evidence artifacts before reviewing.
@@ -1433,6 +1436,26 @@ def simple_markdown_html(text: str) -> str:
     return "\n".join(parts)
 
 
+def phase_status_label(health: dict[str, Any], language: str) -> str:
+    if language != "en":
+        return str(health.get("status_text") or "")
+    tone = str(health.get("status_tone") or "")
+    status = str(health.get("status") or "")
+    present = int(health.get("present_count") or 0)
+    required = int(health.get("required_count") or 0)
+    if tone == "complete" or status == "complete":
+        return "Complete"
+    if tone == "stopped":
+        return "Needs attention"
+    if present and required and present < required:
+        return f"In progress {present}/{required}"
+    if tone == "waiting":
+        return "Waiting for artifacts"
+    if status == "current":
+        return "Current"
+    return "Pending"
+
+
 def phase_page_text(root: Path, key: str) -> tuple[str, str]:
     phase = phase_by_key(root, key)
     if phase is None:
@@ -1440,6 +1463,7 @@ def phase_page_text(root: Path, key: str) -> tuple[str, str]:
     page_path = root / "pages" / f"{key}.md"
     if page_path.exists():
         return phase.title, page_path.read_text(encoding="utf-8", errors="replace")
+    language = ui_config.read_ui_config(root)["language"]
     health = phase_health(root, phase, status="current", active=False, completed=False)
     report = researchctl.report_for(root, phase)
     events = [
@@ -1447,39 +1471,67 @@ def phase_page_text(root: Path, key: str) -> tuple[str, str]:
         for event in read_progress_feed(root, 240)
         if str(event.get("phase") or "") == key
     ][-12:]
-    lines = [
-        f"# {phase.title}",
-        "",
-        f"阶段状态：{health['status_text']}",
-        "",
-        f"目标：{phase.objective}",
-        "",
-        f"门禁：{phase.gate}",
-    ]
-    if phase.kind == "custom" and phase.custom_prompt:
-        lines.extend(["", "## 自定义 Prompt", phase.custom_prompt])
-    lines.extend(["", "## 必需产物"])
-    for item in health["required"]:
-        mark = "已生成" if item["present"] else "未生成"
-        lines.append(f"- {mark}: {item['path']}")
-    if report:
-        lines.extend(["", "## 阶段报告", "```json", json.dumps(report, indent=2, ensure_ascii=False), "```"])
-    if events:
-        lines.extend(["", "## 最近进展"])
-        for event in events:
-            msg = str(event.get("message") or "").strip()
-            if msg:
-                lines.append(f"- {msg}")
-    if not page_path.exists():
+    if language == "en":
+        lines = [
+            f"# {phase.title}",
+            "",
+            f"Phase status: {phase_status_label(health, language)}",
+            "",
+            f"Objective: {phase.objective}",
+            "",
+            f"Gate: {phase.gate}",
+        ]
+        if phase.kind == "custom" and phase.custom_prompt:
+            lines.extend(["", "## Custom Prompt", phase.custom_prompt])
+        lines.extend(["", "## Required Artifacts"])
+        for item in health["required"]:
+            mark = "present" if item["present"] else "missing"
+            lines.append(f"- {mark}: {item['path']}")
+        if report:
+            lines.extend(["", "## Phase Report", "```json", json.dumps(report, indent=2, ensure_ascii=False), "```"])
+        if events:
+            lines.extend(["", "## Recent Progress"])
+            for event in events:
+                msg = str(event.get("message") or "").strip()
+                if msg:
+                    lines.append(f"- {msg}")
+        lines.extend(["", "## Note", f"- Codex should maintain pages/{key}.md as a natural-language phase page in English."])
+    else:
+        lines = [
+            f"# {phase.title}",
+            "",
+            f"阶段状态：{phase_status_label(health, language)}",
+            "",
+            f"目标：{phase.objective}",
+            "",
+            f"门禁：{phase.gate}",
+        ]
+        if phase.kind == "custom" and phase.custom_prompt:
+            lines.extend(["", "## 自定义 Prompt", phase.custom_prompt])
+        lines.extend(["", "## 必需产物"])
+        for item in health["required"]:
+            mark = "已生成" if item["present"] else "未生成"
+            lines.append(f"- {mark}: {item['path']}")
+        if report:
+            lines.extend(["", "## 阶段报告", "```json", json.dumps(report, indent=2, ensure_ascii=False), "```"])
+        if events:
+            lines.extend(["", "## 最近进展"])
+            for event in events:
+                msg = str(event.get("message") or "").strip()
+                if msg:
+                    lines.append(f"- {msg}")
         lines.extend(["", "## 提示", f"- Codex 下一轮应维护 pages/{key}.md，让这里变成自然语言阶段展示页。"])
     return phase.title, "\n".join(lines)
 
 
 def phase_page_html(root: Path, key: str) -> bytes:
     title, text = phase_page_text(root, key)
+    language = ui_config.read_ui_config(root)["language"]
+    back_text = "Back to Console" if language == "en" else "返回控制台"
+    html_lang = "en" if language == "en" else "zh-CN"
     body = simple_markdown_html(text)
     return f"""<!doctype html>
-<html lang="zh-CN">
+<html lang="{html_lang}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1501,7 +1553,7 @@ def phase_page_html(root: Path, key: str) -> bytes:
   </style>
 </head>
 <body>
-  <header><strong>{html_escape(title)}</strong><a href="/">返回控制台</a></header>
+  <header><strong>{html_escape(title)}</strong><a href="/">{back_text}</a></header>
   <main><article>{body}</article></main>
 </body>
 </html>
@@ -2747,6 +2799,9 @@ def index_html_cn_v3() -> bytes:
     button.danger { background: var(--red); border-color: var(--red); color: #fff; }
     button.ghost { background: transparent; }
     button:disabled { opacity: .55; cursor: not-allowed; }
+    .langToggle { display:inline-flex; align-items:center; gap:4px; padding:3px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .langToggle button { min-height:28px; padding:3px 8px; border:0; border-radius:6px; background:transparent; font-size:12px; }
+    .langToggle button.active { background:var(--blue); color:#fff; }
     input, select { min-height: 34px; padding: 6px 8px; width: 100%; }
     input[type="checkbox"] { width: auto; min-height: auto; padding: 0; }
     textarea { width: 100%; min-height: 84px; padding: 9px; resize: vertical; }
@@ -2845,8 +2900,8 @@ def index_html_cn_v3() -> bytes:
     .foldSection details { margin:0; }
     .foldHead { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px; color:var(--text); font-size:15px; font-weight:800; list-style:none; }
     .foldHead::-webkit-details-marker { display:none; }
-    .foldHead::after { content:"收起"; color:var(--muted); font-size:12px; font-weight:700; }
-    details:not([open]) > .foldHead::after { content:"展开"; }
+    .foldHead::after { content:attr(data-open-label); color:var(--muted); font-size:12px; font-weight:700; }
+    details:not([open]) > .foldHead::after { content:attr(data-closed-label); }
     .foldBody { padding:0 14px 14px; }
     .routePanel { border-color:#f3c36b; background:linear-gradient(180deg,#fffaf0 0%,rgba(255,255,255,.92) 100%); }
     .routePanel.ignored { border-color:#fca5a5; background:linear-gradient(180deg,#fff1f2 0%,rgba(255,255,255,.92) 100%); }
@@ -2886,82 +2941,86 @@ def index_html_cn_v3() -> bytes:
       <p class="muted" id="researchDir"></p>
     </div>
     <div class="row">
-      <span id="headerState" class="pill">状态读取中</span>
-      <button class="ghost" id="refreshBtn">刷新</button>
+      <div class="langToggle" role="group" aria-label="Language">
+        <button id="langZhBtn" data-lang-option="zh">中文</button>
+        <button id="langEnBtn" data-lang-option="en">English</button>
+      </div>
+      <span id="headerState" class="pill" data-i18n="reading">状态读取中</span>
+      <button class="ghost" id="refreshBtn" data-i18n="refresh">刷新</button>
     </div>
   </header>
   <div id="errorBar" class="notice" hidden></div>
   <main class="app">
     <aside class="side">
       <section>
-        <h2>研究任务</h2>
+        <h2 data-i18n="research_task">研究任务</h2>
         <select id="projectSelect" class="projectSelect"></select>
         <div class="row" style="margin-top:8px">
-          <input id="projectPathInput" placeholder="输入 .research 或项目目录路径">
-          <button id="switchPathBtn">切换</button>
+          <input id="projectPathInput" placeholder="输入 .research 或项目目录路径" data-i18n-placeholder="project_path_placeholder">
+          <button id="switchPathBtn" data-i18n="switch">切换</button>
         </div>
         <div class="newProjectBox">
-          <textarea id="newProjectTask" placeholder="输入新研究方向"></textarea>
-          <input id="newProjectName" placeholder="方向简称（可选）">
-          <button class="primary" id="newProjectBtn">新建并切换</button>
-          <p class="tiny">自动生成独立文件夹，旧研究继续后台运行。</p>
+          <textarea id="newProjectTask" placeholder="输入新研究方向" data-i18n-placeholder="new_task_placeholder"></textarea>
+          <input id="newProjectName" placeholder="方向简称（可选）" data-i18n-placeholder="new_name_placeholder">
+          <button class="primary" id="newProjectBtn" data-i18n="create_and_switch">新建并切换</button>
+          <p class="tiny" data-i18n="create_note">自动生成独立文件夹，旧研究继续后台运行。</p>
         </div>
       </section>
       <section>
-        <h2>运行控制</h2>
+        <h2 data-i18n="run_control">运行控制</h2>
         <div class="grid2">
-          <label>间隔秒<input id="intervalInput" type="number" min="1" value="1800"></label>
-          <label>轮数<input id="cyclesInput" type="number" min="1" placeholder="留空=持续"></label>
-          <label>运行分钟<input id="durationInput" type="number" min="1" placeholder="可选"></label>
+          <label><span data-i18n="interval_seconds">间隔秒</span><input id="intervalInput" type="number" min="1" value="1800"></label>
+          <label><span data-i18n="cycles">轮数</span><input id="cyclesInput" type="number" min="1" placeholder="留空=持续" data-i18n-placeholder="blank_continuous"></label>
+          <label><span data-i18n="duration_minutes">运行分钟</span><input id="durationInput" type="number" min="1" placeholder="可选" data-i18n-placeholder="optional"></label>
           <label>Codex<input id="codexInput" value="codex"></label>
         </div>
         <div class="row" style="margin-top:10px">
-          <label><input id="dryRunInput" type="checkbox"> 只演练</label>
-          <button class="primary" id="startBtn">启动</button>
-          <button class="danger" id="stopBtn">暂停</button>
+          <label><input id="dryRunInput" type="checkbox"> <span data-i18n="dry_run">只演练</span></label>
+          <button class="primary" id="startBtn" data-i18n="start">启动</button>
+          <button class="danger" id="stopBtn" data-i18n="pause">暂停</button>
         </div>
-        <p class="tiny" style="margin-top:8px">默认持续运行；填写轮数时，跑完指定轮数会自动结束。</p>
+        <p class="tiny" style="margin-top:8px" data-i18n="run_note">默认持续运行；填写轮数时，跑完指定轮数会自动结束。</p>
       </section>
       <section class="memory">
-        <h2>记忆</h2>
+        <h2 data-i18n="memory">记忆</h2>
         <select id="memoryProfile">
-          <option value="balanced">标准记忆</option>
-          <option value="focused">轻量记忆</option>
-          <option value="deep">深度记忆</option>
-          <option value="clean">干净启动</option>
-          <option value="custom">自定义</option>
+          <option value="balanced" data-i18n="memory_balanced">标准记忆</option>
+          <option value="focused" data-i18n="memory_focused">轻量记忆</option>
+          <option value="deep" data-i18n="memory_deep">深度记忆</option>
+          <option value="clean" data-i18n="memory_clean">干净启动</option>
+          <option value="custom" data-i18n="memory_custom">自定义</option>
         </select>
         <p class="tiny" id="memoryProfileText" style="margin-top:7px"></p>
         <details>
-          <summary>高级来源</summary>
-          <label><input type="checkbox" id="memSummary"> 研究摘要</label>
-          <label><input type="checkbox" id="memLogs"> 运行记录</label>
-          <label><input type="checkbox" id="memHuman"> 人工介入</label>
-          <label><input type="checkbox" id="memArtifacts"> 当前阶段产物</label>
+          <summary data-i18n="advanced_sources">高级来源</summary>
+          <label><input type="checkbox" id="memSummary"> <span data-i18n="research_summary">研究摘要</span></label>
+          <label><input type="checkbox" id="memLogs"> <span data-i18n="run_records">运行记录</span></label>
+          <label><input type="checkbox" id="memHuman"> <span data-i18n="human_intervention">人工介入</span></label>
+          <label><input type="checkbox" id="memArtifacts"> <span data-i18n="current_artifacts">当前阶段产物</span></label>
         </details>
-        <button id="saveMemoryBtn" style="margin-top:10px">保存</button>
+        <button id="saveMemoryBtn" style="margin-top:10px" data-i18n="save">保存</button>
       </section>
       <section>
-        <h2>Codex 状态</h2>
+        <h2 data-i18n="codex_status">Codex 状态</h2>
         <div class="quota">
           <div>
-            <div class="quotaHead"><span class="label" id="codexPrimaryLabel">短周期余量</span><span class="quotaValue" id="codexPrimaryValue">-</span></div>
+            <div class="quotaHead"><span class="label" id="codexPrimaryLabel" data-i18n="short_quota">短周期余量</span><span class="quotaValue" id="codexPrimaryValue">-</span></div>
             <div class="quotaBar" id="codexPrimaryBarWrap"><span id="codexPrimaryBar"></span></div>
           </div>
           <div>
-            <div class="quotaHead"><span class="label" id="codexSecondaryLabel">长周期余量</span><span class="quotaValue" id="codexSecondaryValue">-</span></div>
+            <div class="quotaHead"><span class="label" id="codexSecondaryLabel" data-i18n="long_quota">长周期余量</span><span class="quotaValue" id="codexSecondaryValue">-</span></div>
             <div class="quotaBar" id="codexSecondaryBarWrap"><span id="codexSecondaryBar"></span></div>
           </div>
           <div class="grid2">
-            <div><div class="label">计划</div><div class="value" id="codexPlan">-</div></div>
-            <div><div class="label">上下文</div><div class="value" id="codexContext">-</div></div>
+            <div><div class="label" data-i18n="plan">计划</div><div class="value" id="codexPlan">-</div></div>
+            <div><div class="label" data-i18n="context">上下文</div><div class="value" id="codexContext">-</div></div>
           </div>
-          <p class="muted" id="codexStatusMeta">等待读取 Codex session</p>
+          <p class="muted" id="codexStatusMeta" data-i18n="waiting_codex_session">等待读取 Codex session</p>
         </div>
       </section>
       <section class="foldSection">
         <details id="fileTreeDetails" open>
-          <summary class="foldHead"><span>文件树</span><span class="tiny" id="fileTreeCount">-</span></summary>
+          <summary class="foldHead"><span data-i18n="file_tree">文件树</span><span class="tiny" id="fileTreeCount">-</span></summary>
           <div class="foldBody">
             <div class="tree" id="fileTree"></div>
           </div>
@@ -2974,101 +3033,227 @@ def index_html_cn_v3() -> bytes:
           <div class="row" style="align-items:flex-start">
             <span id="statusDot" class="dot"></span>
             <div>
-              <div class="label">运行状态</div>
-              <div class="statusTitle" id="statusTitle">正在读取</div>
-              <p class="statusSub" id="statusSub">请稍候</p>
+              <div class="label" data-i18n="run_status">运行状态</div>
+              <div class="statusTitle" id="statusTitle" data-i18n="reading">正在读取</div>
+              <p class="statusSub" id="statusSub" data-i18n="please_wait">请稍候</p>
             </div>
           </div>
           <span id="jobMode" class="pill">-</span>
         </div>
         <div class="metrics">
-          <div class="metric"><div class="label">当前阶段</div><div class="value" id="phaseKey">-</div></div>
-          <div class="metric"><div class="label">阶段报告</div><div class="value" id="reportStatus">-</div></div>
+          <div class="metric"><div class="label" data-i18n="current_phase">当前阶段</div><div class="value" id="phaseKey">-</div></div>
+          <div class="metric"><div class="label" data-i18n="phase_report">阶段报告</div><div class="value" id="reportStatus">-</div></div>
           <div class="metric"><div class="label">PID</div><div class="value" id="pidValue">-</div></div>
-          <div class="metric"><div class="label">最后活动</div><div class="value" id="lastActivity">-</div></div>
+          <div class="metric"><div class="label" data-i18n="last_activity">最后活动</div><div class="value" id="lastActivity">-</div></div>
         </div>
       </div>
       <section>
         <div class="row" style="justify-content:space-between">
-          <h2>运行时控制</h2>
-          <button id="refreshRuntimeBtn">刷新运行时</button>
+          <h2 data-i18n="runtime_control">运行时控制</h2>
+          <button id="refreshRuntimeBtn" data-i18n="refresh_runtime">刷新运行时</button>
         </div>
         <div class="runtimeGrid">
           <div class="runtimeCard">
-            <div class="label">状态机</div>
+            <div class="label" data-i18n="state_machine">状态机</div>
             <strong id="runtimeWorkflow">-</strong>
             <span class="tiny" id="runtimeReviewGate">-</span>
           </div>
           <div class="runtimeCard">
-            <div class="label">任务队列</div>
+            <div class="label" data-i18n="task_queue">任务队列</div>
             <strong id="runtimeQueue">-</strong>
             <span class="tiny" id="runtimeNextTask">-</span>
           </div>
           <div class="runtimeCard">
-            <div class="label">证据流</div>
+            <div class="label" data-i18n="evidence_flow">证据流</div>
             <strong id="runtimeEvidence">-</strong>
             <span class="tiny" id="runtimeClaimSafety">-</span>
           </div>
           <div class="runtimeCard">
-            <div class="label">停止条件</div>
+            <div class="label" data-i18n="stop_conditions">停止条件</div>
             <strong id="runtimeControl">-</strong>
             <span class="tiny" id="runtimeStopReason">-</span>
           </div>
         </div>
         <details>
-          <summary>查看队列、证据和介入补丁</summary>
+          <summary data-i18n="runtime_details_summary">查看队列、证据和介入补丁</summary>
           <div class="runtimeList" id="runtimeDetails"></div>
         </details>
       </section>
       <section class="routePanel" id="routePanel" hidden>
         <div class="row" style="justify-content:space-between">
-          <h2>阶段路由</h2>
+          <h2 data-i18n="phase_routing">阶段路由</h2>
           <span class="pill waiting" id="routeCount">0 次</span>
         </div>
-        <div class="routeHeadline" id="routeHeadline">暂无路由决策</div>
+        <div class="routeHeadline" id="routeHeadline" data-i18n="no_route">暂无路由决策</div>
         <p class="muted" id="routeSub"></p>
         <details id="routeHistoryDetails">
-          <summary>查看路由历史</summary>
+          <summary data-i18n="route_history">查看路由历史</summary>
           <div class="routeList" id="routeList"></div>
         </details>
       </section>
       <section>
         <div class="row" style="justify-content:space-between">
-          <h2>流程</h2>
+          <h2 data-i18n="workflow">流程</h2>
           <div class="row">
-            <button id="addCustomPhaseBtn">添加阶段</button>
-            <button id="resetWorkflowBtn">清空自定义</button>
-            <button class="primary" id="saveWorkflowBtn">保存流程</button>
+            <button id="addCustomPhaseBtn" data-i18n="add_phase">添加阶段</button>
+            <button id="resetWorkflowBtn" data-i18n="clear_custom">清空自定义</button>
+            <button class="primary" id="saveWorkflowBtn" data-i18n="save_workflow">保存流程</button>
           </div>
         </div>
-        <p class="muted" style="margin-bottom:10px">主干阶段固定不可改；你可以在主干之间插入自己的阶段，并为每个自定义阶段写 Prompt。</p>
+        <p class="muted" style="margin-bottom:10px" data-i18n="workflow_note">主干阶段固定不可改；你可以在主干之间插入自己的阶段，并为每个自定义阶段写 Prompt。</p>
         <div class="flow" id="phaseFlow"></div>
         <details id="customPhaseDetails" open>
-          <summary class="foldHead"><span>自定义方法/阶段</span><span class="tiny" id="customPhaseCount">0 个</span></summary>
+          <summary class="foldHead"><span data-i18n="custom_methods">自定义方法/阶段</span><span class="tiny" id="customPhaseCount">0 个</span></summary>
           <div class="foldBody">
-            <div class="lockNote">基础研究流程会始终保留：范围、综述、数据、基线、方法、实验、证据、写作和内审。自定义阶段只作为额外检查点插入。</div>
+            <div class="lockNote" data-i18n="base_workflow_note">基础研究流程会始终保留：范围、综述、数据、基线、方法、实验、证据、写作和内审。自定义阶段只作为额外检查点插入。</div>
             <div class="workflowEditor" id="workflowEditor"></div>
           </div>
         </details>
       </section>
       <section>
-        <h2>Codex 现在在做什么</h2>
-        <p class="muted" style="margin-bottom:10px">这里显示 Codex 自己写入的自然语言进展；没有原始日志，也不会按换行拆消息。</p>
+        <h2 data-i18n="codex_activity">Codex 现在在做什么</h2>
+        <p class="muted" style="margin-bottom:10px" data-i18n="codex_activity_note">这里显示 Codex 自己写入的自然语言进展；没有原始日志，也不会按换行拆消息。</p>
         <div class="feed" id="feed"></div>
         <div class="composer">
-          <textarea id="interventionText" placeholder="实时介入：输入你希望下一轮 Codex 采纳的新要求。需要立刻改变方向时先暂停。"></textarea>
-          <button class="primary" id="sendInterventionBtn">发送</button>
+          <textarea id="interventionText" placeholder="实时介入：输入你希望下一轮 Codex 采纳的新要求。需要立刻改变方向时先暂停。" data-i18n-placeholder="intervention_placeholder"></textarea>
+          <button class="primary" id="sendInterventionBtn" data-i18n="send">发送</button>
         </div>
       </section>
     </div>
   </main>
   <script>
     const $ = (id) => document.getElementById(id);
-    const roleName = {agent: 'Codex', human: '你', system: '系统'};
+    const I18N = {
+      zh: {
+        refresh:'刷新', research_task:'研究任务', project_path_placeholder:'输入 .research 或项目目录路径', switch:'切换',
+        new_task_placeholder:'输入新研究方向', new_name_placeholder:'方向简称（可选）', create_and_switch:'新建并切换',
+        create_note:'自动生成独立文件夹，旧研究继续后台运行。', run_control:'运行控制', interval_seconds:'间隔秒',
+        cycles:'轮数', blank_continuous:'留空=持续', duration_minutes:'运行分钟', optional:'可选', dry_run:'只演练',
+        start:'启动', pause:'暂停', run_note:'默认持续运行；填写轮数时，跑完指定轮数会自动结束。',
+        memory:'记忆', memory_balanced:'标准记忆', memory_focused:'轻量记忆', memory_deep:'深度记忆',
+        memory_clean:'干净启动', memory_custom:'自定义', advanced_sources:'高级来源', research_summary:'研究摘要',
+        run_records:'运行记录', human_intervention:'人工介入', current_artifacts:'当前阶段产物', save:'保存',
+        codex_status:'Codex 状态', short_quota:'短周期余量', long_quota:'长周期余量', plan:'计划', context:'上下文',
+        waiting_codex_session:'等待读取 Codex session', file_tree:'文件树', run_status:'运行状态', reading:'正在读取',
+        please_wait:'请稍候', current_phase:'当前阶段', phase_report:'阶段报告', last_activity:'最后活动',
+        runtime_control:'运行时控制', refresh_runtime:'刷新运行时', state_machine:'状态机', task_queue:'任务队列',
+        evidence_flow:'证据流', stop_conditions:'停止条件', runtime_details_summary:'查看队列、证据和介入补丁',
+        phase_routing:'阶段路由', no_route:'暂无路由决策', route_history:'查看路由历史', workflow:'流程',
+        add_phase:'添加阶段', clear_custom:'清空自定义', save_workflow:'保存流程',
+        workflow_note:'主干阶段固定不可改；你可以在主干之间插入自己的阶段，并为每个自定义阶段写 Prompt。',
+        custom_methods:'自定义方法/阶段', base_workflow_note:'基础研究流程会始终保留：范围、综述、数据、基线、方法、实验、证据、写作和内审。自定义阶段只作为额外检查点插入。',
+        codex_activity:'Codex 现在在做什么', codex_activity_note:'这里显示 Codex 自己写入的自然语言进展；没有原始日志，也不会按换行拆消息。',
+        intervention_placeholder:'实时介入：输入你希望下一轮 Codex 采纳的新要求。需要立刻改变方向时先暂停。', send:'发送',
+        connection_failed:'连接或请求失败：{message}', seconds_ago:'{value} 秒前', minutes_ago:'{value} 分钟前',
+        hours_ago:'{value} 小时前', days_quota:'{value} 天余量', hours_quota:'{value} 小时余量', minutes_quota:'{value} 分钟余量',
+        reset_after:'重置 {value}后', running:'运行中', idle:'空闲', current:'当前', current_run:'当前运行', recent_session:'最近会话',
+        no_codex_status:'没有读到 Codex 状态', unavailable:'不可用', active_label:'Codex 正在执行',
+        waiting_label:'后台进程运行中，等待下一轮或等待 Codex 输出', stopped_label:'已暂停', dry_done_label:'演练完成',
+        finished_label:'已结束', not_running_label:'未运行', no_task:'无任务', no_background:'后台没有运行任务',
+        route_advance:'前进', route_repeat:'重做当前阶段', route_jump_back:'跳回', route_skip_next:'跳过下一阶段',
+        route_jump_to:'跳转', routing_word:'路由', route_count:'{total} 次路由 / {jumps} 次跳转',
+        revisit:'当前阶段第 {count} 次进入。', route_ignored:'路由建议被忽略：{line}',
+        base_phase:'主干', custom_phase:'自定义', visit:'第{count}次', enabled:'启用', delete:'删除',
+        phase_name_placeholder:'阶段名称', prompt_placeholder:'这个阶段要交给 Codex 做什么。写清目标、输入、输出、判断标准。',
+        objective_placeholder:'目标说明，可选', gate_placeholder:'完成门禁，可选', default_artifacts:'默认产物：custom/{key}.md 和 reports/{key}.json',
+        phase_page:'展示页', no_custom_phase:'还没有自定义阶段。点击“添加阶段”，给 Codex 插入额外检查点或专项任务。',
+        custom_phase_title:'自定义阶段', review_gate:'审稿门禁：{gate}', waiting_state_machine:'等待状态机',
+        queue_counts:'{pending} 待办 / {running} 运行 / {failed} 失败', no_pending_task:'当前阶段暂无待办',
+        paper_safe_claims:'{count} 可写 claim', claim_verified:'已验证 {verified} / 总计 {total}',
+        should_pause:'需要暂停', can_continue:'允许继续', no_stop_reason:'未触发停止条件',
+        recent_tasks:'最近任务', evidence_claims:'证据 claim', intervention_patches:'介入补丁', no_tasks:'暂无任务。',
+        no_claims:'暂无 claim 证据。', no_patches:'暂无待处理介入补丁。', candidate:'候选', writable:'可写',
+        no_progress:'还没有 Codex 进展。启动后台任务后，这里会显示 Codex 自己写入的自然语言更新。',
+        artifacts:'产物', time:'时间', no_files:'暂无文件', file_count:'{count} 个', empty_new_task:'新研究方向不能为空',
+        creating:'创建中', starting_task:'正在启动后台任务', run_limited:'按设定条件运行，结束后可再次启动',
+        run_continuous:'持续运行中，关闭网页不影响进程', pausing:'正在暂停', custom_memory_note:'手动选择高级来源。',
+        memory_saved_note:'保存后下一轮 Codex 会按这个记忆模式读取上下文。', collapse:'收起', expand:'展开'
+      },
+      en: {
+        refresh:'Refresh', research_task:'Research Task', project_path_placeholder:'Enter a .research or project directory path', switch:'Switch',
+        new_task_placeholder:'Enter a new research direction', new_name_placeholder:'Short name (optional)', create_and_switch:'Create and Switch',
+        create_note:'Creates an independent folder; existing runs can continue in the background.', run_control:'Run Control', interval_seconds:'Interval Sec',
+        cycles:'Cycles', blank_continuous:'blank = continuous', duration_minutes:'Run Minutes', optional:'optional', dry_run:'Dry run',
+        start:'Start', pause:'Pause', run_note:'Default is continuous. If cycles are set, the run stops after that count.',
+        memory:'Memory', memory_balanced:'Standard Memory', memory_focused:'Light Memory', memory_deep:'Deep Memory',
+        memory_clean:'Clean Start', memory_custom:'Custom', advanced_sources:'Advanced Sources', research_summary:'Research Summary',
+        run_records:'Run Records', human_intervention:'Human Intervention', current_artifacts:'Current Artifacts', save:'Save',
+        codex_status:'Codex Status', short_quota:'Short-window quota', long_quota:'Long-window quota', plan:'Plan', context:'Context',
+        waiting_codex_session:'Waiting for Codex session', file_tree:'File Tree', run_status:'Run Status', reading:'Reading',
+        please_wait:'Please wait', current_phase:'Current Phase', phase_report:'Phase Report', last_activity:'Last Activity',
+        runtime_control:'Runtime Control', refresh_runtime:'Refresh Runtime', state_machine:'State Machine', task_queue:'Task Queue',
+        evidence_flow:'Evidence Flow', stop_conditions:'Stop Conditions', runtime_details_summary:'View queue, evidence, and intervention patches',
+        phase_routing:'Phase Routing', no_route:'No route decision yet', route_history:'View Route History', workflow:'Workflow',
+        add_phase:'Add Phase', clear_custom:'Clear Custom', save_workflow:'Save Workflow',
+        workflow_note:'Base phases are locked. You can insert your own phases between base phases and write a prompt for each one.',
+        custom_methods:'Custom Methods / Phases', base_workflow_note:'The base research flow always stays: scope, survey, data, baselines, method, experiments, evidence, writing, and review. Custom phases are extra checkpoints only.',
+        codex_activity:'What Codex Is Doing', codex_activity_note:'This shows natural-language progress written by Codex itself. Raw logs are not shown and line breaks are not split into bubbles.',
+        intervention_placeholder:'Intervene live: write what you want Codex to follow next cycle. Pause first if you need an immediate direction change.', send:'Send',
+        connection_failed:'Connection or request failed: {message}', seconds_ago:'{value}s ago', minutes_ago:'{value}m ago',
+        hours_ago:'{value}h ago', days_quota:'{value}d quota', hours_quota:'{value}h quota', minutes_quota:'{value}m quota',
+        reset_after:'resets in {value}', running:'Running', idle:'Idle', current:'Current', current_run:'Active run', recent_session:'Recent session',
+        no_codex_status:'No Codex status found', unavailable:'Unavailable', active_label:'Codex is executing',
+        waiting_label:'Background process is running, waiting for next cycle or Codex output', stopped_label:'Paused',
+        dry_done_label:'Dry run complete', finished_label:'Finished', not_running_label:'Not running', no_task:'No task', no_background:'No background job is running',
+        route_advance:'Advance', route_repeat:'Repeat current phase', route_jump_back:'Jump back', route_skip_next:'Skip next phase',
+        route_jump_to:'Jump', routing_word:'Route', route_count:'{total} routes / {jumps} jumps',
+        revisit:'Current phase visit #{count}.', route_ignored:'Route suggestion ignored: {line}',
+        base_phase:'Base', custom_phase:'Custom', visit:'visit #{count}', enabled:'Enabled', delete:'Delete',
+        phase_name_placeholder:'Phase name', prompt_placeholder:'What should Codex do in this phase? Define goal, inputs, outputs, and pass criteria.',
+        objective_placeholder:'Objective, optional', gate_placeholder:'Completion gate, optional', default_artifacts:'Default artifacts: custom/{key}.md and reports/{key}.json',
+        phase_page:'Phase Page', no_custom_phase:'No custom phases yet. Click "Add Phase" to insert an extra checkpoint or task for Codex.',
+        custom_phase_title:'Custom Phase', review_gate:'Review gate: {gate}', waiting_state_machine:'Waiting for state machine',
+        queue_counts:'{pending} pending / {running} running / {failed} failed', no_pending_task:'No pending task for the current phase',
+        paper_safe_claims:'{count} paper-safe claims', claim_verified:'Verified {verified} / Total {total}',
+        should_pause:'Pause needed', can_continue:'Can continue', no_stop_reason:'No stop condition triggered',
+        recent_tasks:'Recent Tasks', evidence_claims:'Evidence Claims', intervention_patches:'Intervention Patches', no_tasks:'No tasks.',
+        no_claims:'No claim evidence yet.', no_patches:'No pending intervention patches.', candidate:'Candidate', writable:'Paper-safe',
+        no_progress:'No Codex progress yet. After you start a background run, this area shows natural-language updates written by Codex.',
+        artifacts:'Artifacts', time:'Time', no_files:'No files', file_count:'{count}', empty_new_task:'New research direction cannot be empty',
+        creating:'Creating', starting_task:'Starting background job', run_limited:'Running under the configured stop condition; you can start again after it ends',
+        run_continuous:'Running continuously. Closing the browser does not stop the process', pausing:'Pausing',
+        custom_memory_note:'Advanced sources selected manually.', memory_saved_note:'After saving, Codex will read context using this memory mode in the next cycle.',
+        collapse:'Collapse', expand:'Expand'
+      }
+    };
+    let uiLanguage = localStorage.getItem('paperfactory.language') || 'zh';
+    let lastProjectsData = null;
+    let lastStatusData = null;
+    let lastCodexStatusData = null;
+    let lastRuntimeData = null;
+    let lastFeedData = null;
+    let lastMemoryData = null;
     let workflowDirty = false;
     let workflowPhases = [];
     let treeInitialized = false;
     const openTreeFolders = new Set();
+
+    function t(key, params = {}) {
+      let text = (I18N[uiLanguage] && I18N[uiLanguage][key]) || I18N.zh[key] || key;
+      Object.entries(params).forEach(([name, value]) => {
+        text = text.replaceAll(`{${name}}`, String(value));
+      });
+      return text;
+    }
+
+    function applyLanguage(lang) {
+      uiLanguage = lang === 'en' ? 'en' : 'zh';
+      localStorage.setItem('paperfactory.language', uiLanguage);
+      document.documentElement.lang = uiLanguage === 'en' ? 'en' : 'zh-CN';
+      document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+      document.querySelectorAll('.foldHead').forEach(el => {
+        el.dataset.openLabel = t('collapse');
+        el.dataset.closedLabel = t('expand');
+      });
+      document.querySelectorAll('[data-lang-option]').forEach(btn => btn.classList.toggle('active', btn.dataset.langOption === uiLanguage));
+      if (lastProjectsData) renderProjects(lastProjectsData);
+      if (lastStatusData) renderStatus(lastStatusData);
+      if (lastCodexStatusData) renderCodexStatus(lastCodexStatusData);
+      if (lastRuntimeData) renderRuntime(lastRuntimeData);
+      if (lastFeedData) renderFeed(lastFeedData);
+      if (lastMemoryData) renderMemory(lastMemoryData);
+    }
 
     function setError(message) {
       $('errorBar').hidden = !message;
@@ -3080,7 +3265,7 @@ def index_html_cn_v3() -> bytes:
         if (!res.ok) throw new Error(await res.text());
         return await res.json();
       } catch (err) {
-        setError(`连接或请求失败：${err.message || err}`);
+        setError(t('connection_failed', {message: err.message || err}));
         throw err;
       }
     }
@@ -3091,7 +3276,7 @@ def index_html_cn_v3() -> bytes:
       if (!ts) return '';
       const date = new Date(ts);
       if (Number.isNaN(date.getTime())) return String(ts);
-      return date.toLocaleString('zh-CN', {
+      return date.toLocaleString(uiLanguage === 'en' ? 'en-US' : 'zh-CN', {
         hour12: false,
         year: 'numeric',
         month: '2-digit',
@@ -3103,13 +3288,13 @@ def index_html_cn_v3() -> bytes:
     }
     function ago(seconds) {
       if (seconds === null || seconds === undefined) return '-';
-      if (seconds < 60) return `${seconds} 秒前`;
-      if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`;
-      return `${Math.floor(seconds / 3600)} 小时前`;
+      if (seconds < 60) return t('seconds_ago', {value: seconds});
+      if (seconds < 3600) return t('minutes_ago', {value: Math.floor(seconds / 60)});
+      return t('hours_ago', {value: Math.floor(seconds / 3600)});
     }
     function compactNumber(value) {
       if (value === null || value === undefined) return '-';
-      return Number(value).toLocaleString('zh-CN');
+      return Number(value).toLocaleString(uiLanguage === 'en' ? 'en-US' : 'zh-CN');
     }
     function percent(value) {
       if (value === null || value === undefined) return '-';
@@ -3117,13 +3302,13 @@ def index_html_cn_v3() -> bytes:
     }
     function windowLabel(minutes, fallback) {
       if (!minutes) return fallback;
-      if (minutes % 1440 === 0) return `${minutes / 1440} 天余量`;
-      if (minutes % 60 === 0) return `${minutes / 60} 小时余量`;
-      return `${minutes} 分钟余量`;
+      if (minutes % 1440 === 0) return t('days_quota', {value: minutes / 1440});
+      if (minutes % 60 === 0) return t('hours_quota', {value: minutes / 60});
+      return t('minutes_quota', {value: minutes});
     }
     function resetText(seconds) {
       if (seconds === null || seconds === undefined) return '';
-      return `重置 ${ago(seconds)}后`;
+      return t('reset_after', {value: ago(seconds)});
     }
     function setQuotaBar(wrapId, barId, remaining) {
       const value = remaining === null || remaining === undefined ? 0 : Math.max(0, Math.min(100, Number(remaining)));
@@ -3136,15 +3321,45 @@ def index_html_cn_v3() -> bytes:
       if (health === 'stopped' || health === 'error') return 'stopped';
       return '';
     }
+    function jobStateLabel(job) {
+      const health = job.health || 'idle';
+      if (health === 'active') return t('active_label');
+      if (health === 'waiting') return t('waiting_label');
+      if (health === 'stopped') return t('stopped_label');
+      if (job.message === '干跑完成：已刷新下一步 prompt' || job.status === 'dry_run_complete') return t('dry_done_label');
+      if (health === 'ready') return t('finished_label');
+      return t('not_running_label');
+    }
+    function jobMessageLabel(job) {
+      const health = job.health || 'idle';
+      if (health === 'active') return t('active_label');
+      if (health === 'waiting') return t('waiting_label');
+      if (health === 'stopped') return t('stopped_label');
+      if (health === 'ready') return job.completed ? t('finished_label') : t('dry_done_label');
+      return t('no_background');
+    }
+    function phaseStatusText(phase) {
+      if (!phase) return '-';
+      if (phase.status === 'complete') return uiLanguage === 'en' ? 'Complete' : (phase.status_text || '已完成');
+      if (phase.status === 'current') {
+        if (phase.present_count && phase.required_count && phase.present_count < phase.required_count) {
+          return uiLanguage === 'en' ? `In progress ${phase.present_count}/${phase.required_count}` : (phase.status_text || `进行中 ${phase.present_count}/${phase.required_count}`);
+        }
+        return uiLanguage === 'en' ? 'Current' : (phase.status_text || '当前');
+      }
+      if (phase.status === 'disabled') return uiLanguage === 'en' ? 'Disabled' : '已禁用';
+      if (phase.status === 'pending') return uiLanguage === 'en' ? 'Pending' : (phase.status_text || '未开始');
+      return phase.status_text || phase.status || '-';
+    }
     function routeDecisionLabel(decision) {
       return ({
-        advance: '前进',
-        repeat: '重做当前阶段',
-        jump_back: '跳回',
-        skip_next: '跳过下一阶段',
-        jump_to: '跳转',
-        skip_to: '跳转'
-      })[decision] || (decision || '路由');
+        advance: t('route_advance'),
+        repeat: t('route_repeat'),
+        jump_back: t('route_jump_back'),
+        skip_next: t('route_skip_next'),
+        jump_to: t('route_jump_to'),
+        skip_to: t('route_jump_to')
+      })[decision] || (decision || t('routing_word'));
     }
     function phaseLabel(key) {
       const phase = workflowPhases.find(p => p.key === key);
@@ -3166,13 +3381,13 @@ def index_html_cn_v3() -> bytes:
       panel.hidden = false;
       panel.className = `routePanel ${latest.ignored ? 'ignored' : ''}`;
       const summary = data.route_summary || {};
-      $('routeCount').textContent = `${summary.total || routes.length} 次路由 / ${summary.jumps || 0} 次跳转`;
-      const revisit = data.phase && data.phase.revisited ? `当前阶段第 ${data.phase.active_visit_count} 次进入。` : '';
-      $('routeHeadline').textContent = latest.ignored ? `路由建议被忽略：${routeLine(latest)}` : routeLine(latest);
+      $('routeCount').textContent = t('route_count', {total: summary.total || routes.length, jumps: summary.jumps || 0});
+      const revisit = data.phase && data.phase.revisited ? t('revisit', {count: data.phase.active_visit_count}) : '';
+      $('routeHeadline').textContent = latest.ignored ? t('route_ignored', {line: routeLine(latest)}) : routeLine(latest);
       $('routeSub').textContent = [latest.reason, latest.ignore_reason, revisit].filter(Boolean).join(' ');
       $('routeList').innerHTML = routes.slice().reverse().map((route, index) => {
-        const confidence = route.confidence === null || route.confidence === undefined || route.confidence === '' ? '' : ` · 置信度 ${route.confidence}`;
-        const ignored = route.ignored ? ' · 已忽略' : '';
+        const confidence = route.confidence === null || route.confidence === undefined || route.confidence === '' ? '' : ` · ${uiLanguage === 'en' ? 'confidence' : '置信度'} ${route.confidence}`;
+        const ignored = route.ignored ? ` · ${uiLanguage === 'en' ? 'ignored' : '已忽略'}` : '';
         return `<div class="routeItem">
           <strong>${esc(routes.length - index)}. ${esc(routeLine(route))}</strong>
           <div class="routeMeta">${esc(route.decided_at || '')}${esc(confidence)}${esc(ignored)}</div>
@@ -3259,7 +3474,7 @@ def index_html_cn_v3() -> bytes:
         kind: 'custom',
         key: `custom_${Date.now()}`,
         enabled: true,
-        title: '自定义阶段',
+        title: t('custom_phase_title'),
         insert_after: workflowPhases.find(p => p.kind !== 'custom')?.key || 'scope',
         prompt: '',
         objective: '',
@@ -3270,29 +3485,29 @@ def index_html_cn_v3() -> bytes:
     function renderWorkflowEditor(phases) {
       workflowPhases = phases;
       const customCount = phases.filter(p => p.kind === 'custom').length;
-      $('customPhaseCount').textContent = `${customCount} 个`;
+      $('customPhaseCount').textContent = t('file_count', {count: customCount});
       if (workflowDirty) return;
       const customs = phases.filter(p => p.kind === 'custom');
       if (!customs.length) {
-        $('workflowEditor').innerHTML = '<div class="empty" style="min-height:90px">还没有自定义阶段。点击“添加阶段”，给 Codex 插入额外检查点或专项任务。</div>';
+        $('workflowEditor').innerHTML = `<div class="empty" style="min-height:90px">${esc(t('no_custom_phase'))}</div>`;
         return;
       }
       $('workflowEditor').innerHTML = customs.map(p => `
         <div class="workflowRow custom" data-key="${esc(p.key)}">
           <div class="workflowRowHeader">
-            <label><input type="checkbox" data-field="enabled" ${p.enabled ? 'checked' : ''}> 启用</label>
-            <input data-field="title" type="text" value="${esc(p.title)}" aria-label="阶段名称" placeholder="阶段名称">
+            <label><input type="checkbox" data-field="enabled" ${p.enabled ? 'checked' : ''}> ${esc(t('enabled'))}</label>
+            <input data-field="title" type="text" value="${esc(p.title)}" aria-label="${esc(t('phase_name_placeholder'))}" placeholder="${esc(t('phase_name_placeholder'))}">
             <select data-field="insert_after" aria-label="插入位置">${basePhaseOptions(p.insert_after || 'scope')}</select>
-            <button data-remove="${esc(p.key)}">删除</button>
+            <button data-remove="${esc(p.key)}">${esc(t('delete'))}</button>
           </div>
-          <textarea data-field="prompt" placeholder="这个阶段要交给 Codex 做什么。写清目标、输入、输出、判断标准。">${esc(p.prompt || '')}</textarea>
+          <textarea data-field="prompt" placeholder="${esc(t('prompt_placeholder'))}">${esc(p.prompt || '')}</textarea>
           <div class="grid2">
-            <input data-field="objective" type="text" value="${esc(p.objective || '')}" placeholder="目标说明，可选">
-            <input data-field="gate" type="text" value="${esc(p.gate || '')}" placeholder="完成门禁，可选">
+            <input data-field="objective" type="text" value="${esc(p.objective || '')}" placeholder="${esc(t('objective_placeholder'))}">
+            <input data-field="gate" type="text" value="${esc(p.gate || '')}" placeholder="${esc(t('gate_placeholder'))}">
           </div>
           <div class="row">
-            <span class="tiny">默认产物：custom/${esc(p.key)}.md 和 reports/${esc(p.key)}.json</span>
-            <button data-open="${esc(p.page_url)}">展示页</button>
+            <span class="tiny">${esc(t('default_artifacts', {key: p.key}))}</span>
+            <button data-open="${esc(p.page_url)}">${esc(t('phase_page'))}</button>
           </div>
         </div>
       `).join('');
@@ -3314,47 +3529,49 @@ def index_html_cn_v3() -> bytes:
       });
     }
     function renderStatus(data) {
+      lastStatusData = data;
       $('researchDir').textContent = data.research_dir;
       $('phaseKey').textContent = `${data.phase.key} · ${data.phase.title}`;
-      $('reportStatus').textContent = data.phase.display_status || data.phase.report_status;
+      $('reportStatus').textContent = phaseStatusText(data.phase) || data.phase.report_status;
       const job = data.job || {};
       const health = job.health || 'idle';
       const cls = healthClass(health);
       $('statusDot').className = `dot ${cls}`;
       $('headerState').className = `pill ${cls}`;
-      $('headerState').textContent = job.state_label || '未运行';
-      $('statusTitle').textContent = job.state_label || '未运行';
-      $('statusSub').textContent = job.message || '后台没有运行任务';
-      $('jobMode').textContent = job.mode || '无任务';
+      $('headerState').textContent = jobStateLabel(job);
+      $('statusTitle').textContent = jobStateLabel(job);
+      $('statusSub').textContent = jobMessageLabel(job);
+      $('jobMode').textContent = job.mode || t('no_task');
       $('pidValue').textContent = job.current_pid || '-';
       $('lastActivity').textContent = ago(job.last_activity && job.last_activity.age_seconds);
       $('startBtn').disabled = !!job.running;
       $('stopBtn').disabled = !job.running;
       workflowPhases = data.phases || [];
       $('phaseFlow').innerHTML = data.phases.map(p => {
-        const kindText = p.kind === 'custom' ? '自定义' : '主干';
-        const visit = p.active_visit_count > 1 ? ` · 第${p.active_visit_count}次` : '';
-        return `<button class="phase ${p.status} ${p.kind === 'custom' ? 'custom' : ''} ${p.revisited ? 'revisited' : ''}" data-url="${esc(p.page_url)}"><strong>${esc(p.index)}. ${esc(p.title)}</strong><span class="phaseMeta">${esc(kindText)} · ${esc(p.status_text || p.status)} · ${esc(p.present_count || 0)}/${esc(p.required_count || 0)}${esc(visit)}</span></button>`;
+        const kindText = p.kind === 'custom' ? t('custom_phase') : t('base_phase');
+        const visit = p.active_visit_count > 1 ? ` · ${t('visit', {count: p.active_visit_count})}` : '';
+        return `<button class="phase ${p.status} ${p.kind === 'custom' ? 'custom' : ''} ${p.revisited ? 'revisited' : ''}" data-url="${esc(p.page_url)}"><strong>${esc(p.index)}. ${esc(p.title)}</strong><span class="phaseMeta">${esc(kindText)} · ${esc(phaseStatusText(p))} · ${esc(p.present_count || 0)}/${esc(p.required_count || 0)}${esc(visit)}</span></button>`;
       }).join('');
       document.querySelectorAll('.phase[data-url]').forEach(el => el.addEventListener('click', () => window.open(el.dataset.url, '_blank')));
       renderRoutePanel(data);
       renderWorkflowEditor(data.phases);
     }
     function renderCodexStatus(data) {
+      lastCodexStatusData = data;
       if (!data.available) {
         $('codexPrimaryValue').textContent = '-';
         $('codexSecondaryValue').textContent = '-';
         $('codexPlan').textContent = '-';
         $('codexContext').textContent = '-';
-        $('codexStatusMeta').textContent = data.message || '没有读到 Codex 状态';
+        $('codexStatusMeta').textContent = data.message && uiLanguage === 'zh' ? data.message : t('no_codex_status');
         setQuotaBar('codexPrimaryBarWrap', 'codexPrimaryBar', 0);
         setQuotaBar('codexSecondaryBarWrap', 'codexSecondaryBar', 0);
         return;
       }
       const primary = data.primary || {};
       const secondary = data.secondary || {};
-      $('codexPrimaryLabel').textContent = windowLabel(primary.window_minutes, '短周期余量');
-      $('codexSecondaryLabel').textContent = windowLabel(secondary.window_minutes, '长周期余量');
+      $('codexPrimaryLabel').textContent = windowLabel(primary.window_minutes, t('short_quota'));
+      $('codexSecondaryLabel').textContent = windowLabel(secondary.window_minutes, t('long_quota'));
       $('codexPrimaryValue').textContent = percent(primary.remaining_percent);
       $('codexSecondaryValue').textContent = percent(secondary.remaining_percent);
       setQuotaBar('codexPrimaryBarWrap', 'codexPrimaryBar', primary.remaining_percent);
@@ -3362,84 +3579,87 @@ def index_html_cn_v3() -> bytes:
       $('codexPlan').textContent = data.plan_type || '-';
       $('codexContext').textContent = data.model_context_window ? compactNumber(data.model_context_window) : '-';
       const total = data.total_token_usage || {};
-      const source = data.source === 'active' ? '当前运行' : '最近会话';
+      const source = data.source === 'active' ? t('current_run') : t('recent_session');
       const reset = [resetText(primary.reset_in_seconds), resetText(secondary.reset_in_seconds)].filter(Boolean).join(' / ');
       $('codexStatusMeta').textContent = `${source} · 更新 ${ago(data.age_seconds)} · total ${compactNumber(total.total_tokens)} tokens${reset ? ' · ' + reset : ''}`;
     }
     function renderRuntime(data) {
+      lastRuntimeData = data;
       const workflow = data.workflow || {};
       const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : [];
       const currentNode = nodes.find(n => n.key === workflow.current_phase) || {};
-      $('runtimeWorkflow').textContent = `${workflow.current_phase || '-'} · ${nodes.length || 0} 阶段`;
-      $('runtimeReviewGate').textContent = currentNode.review_gate ? `审稿门禁：${currentNode.review_gate}` : '等待状态机';
+      $('runtimeWorkflow').textContent = `${workflow.current_phase || '-'} · ${nodes.length || 0} ${uiLanguage === 'en' ? 'phases' : '阶段'}`;
+      $('runtimeReviewGate').textContent = currentNode.review_gate ? t('review_gate', {gate: currentNode.review_gate}) : t('waiting_state_machine');
 
       const queue = data.queue || {};
       const counts = queue.counts || {};
       const pending = counts.pending || 0;
       const running = counts.running || 0;
       const failed = counts.failed || 0;
-      $('runtimeQueue').textContent = `${pending} 待办 / ${running} 运行 / ${failed} 失败`;
+      $('runtimeQueue').textContent = t('queue_counts', {pending, running, failed});
       const nextTask = queue.next_task || null;
-      $('runtimeNextTask').textContent = nextTask ? `${nextTask.title || nextTask.id}` : '当前阶段暂无待办';
+      $('runtimeNextTask').textContent = nextTask ? `${nextTask.title || nextTask.id}` : t('no_pending_task');
 
       const evidence = data.evidence || {};
       const evSummary = evidence.summary || {};
-      $('runtimeEvidence').textContent = `${evSummary.paper_safe_claims || 0} 可写 claim`;
-      $('runtimeClaimSafety').textContent = `已验证 ${evSummary.claims_verified || 0} / 总计 ${evSummary.claims_total || 0}`;
+      $('runtimeEvidence').textContent = t('paper_safe_claims', {count: evSummary.paper_safe_claims || 0});
+      $('runtimeClaimSafety').textContent = t('claim_verified', {verified: evSummary.claims_verified || 0, total: evSummary.claims_total || 0});
 
       const control = data.control || {};
       const decision = control.decision || {};
-      $('runtimeControl').textContent = decision.should_stop ? '需要暂停' : '允许继续';
+      $('runtimeControl').textContent = decision.should_stop ? t('should_pause') : t('can_continue');
       $('runtimeControl').className = decision.should_stop ? 'runtimeToneBad' : 'runtimeToneGood';
       const reasons = Array.isArray(decision.reasons) ? decision.reasons : [];
-      $('runtimeStopReason').textContent = reasons.length ? reasons.join('；') : '未触发停止条件';
+      $('runtimeStopReason').textContent = reasons.length ? reasons.join('；') : t('no_stop_reason');
 
       const tasks = Array.isArray(queue.tasks) ? queue.tasks.slice().reverse().slice(0, 6) : [];
       const claims = Array.isArray(evidence.claims) ? evidence.claims.slice().reverse().slice(0, 4) : [];
       const patches = data.interventions && Array.isArray(data.interventions.recent_pending) ? data.interventions.recent_pending.slice().reverse().slice(0, 4) : [];
-      const taskHtml = tasks.length ? tasks.map(t => `<div class="runtimeItem"><strong>${esc(t.status || 'pending')} · ${esc(t.title || t.id)}</strong><span class="tiny">${esc(t.phase || '')} · priority ${esc(t.priority ?? '-')} · ${esc(t.expected_output || '')}</span></div>`).join('') : '<div class="runtimeItem">暂无任务。</div>';
-      const claimHtml = claims.length ? claims.map(c => `<div class="runtimeItem"><strong>${c.paper_safe ? '可写' : '候选'} · ${esc(c.claim || c.id)}</strong><span class="tiny">${esc(c.phase || '')} · confidence ${esc(c.confidence ?? '-')}</span></div>`).join('') : '<div class="runtimeItem">暂无 claim 证据。</div>';
-      const patchHtml = patches.length ? patches.map(p => `<div class="runtimeItem"><strong>${esc(p.kind || 'general')} · ${esc(p.status || 'pending')}</strong><span class="tiny">${esc(p.message || '')}</span></div>`).join('') : '<div class="runtimeItem">暂无待处理介入补丁。</div>';
-      $('runtimeDetails').innerHTML = `<div><div class="label">最近任务</div>${taskHtml}</div><div><div class="label">证据 claim</div>${claimHtml}</div><div><div class="label">介入补丁</div>${patchHtml}</div>`;
+      const taskHtml = tasks.length ? tasks.map(t => `<div class="runtimeItem"><strong>${esc(t.status || 'pending')} · ${esc(t.title || t.id)}</strong><span class="tiny">${esc(t.phase || '')} · priority ${esc(t.priority ?? '-')} · ${esc(t.expected_output || '')}</span></div>`).join('') : `<div class="runtimeItem">${esc(t('no_tasks'))}</div>`;
+      const claimHtml = claims.length ? claims.map(c => `<div class="runtimeItem"><strong>${c.paper_safe ? t('writable') : t('candidate')} · ${esc(c.claim || c.id)}</strong><span class="tiny">${esc(c.phase || '')} · confidence ${esc(c.confidence ?? '-')}</span></div>`).join('') : `<div class="runtimeItem">${esc(t('no_claims'))}</div>`;
+      const patchHtml = patches.length ? patches.map(p => `<div class="runtimeItem"><strong>${esc(p.kind || 'general')} · ${esc(p.status || 'pending')}</strong><span class="tiny">${esc(p.message || '')}</span></div>`).join('') : `<div class="runtimeItem">${esc(t('no_patches'))}</div>`;
+      $('runtimeDetails').innerHTML = `<div><div class="label">${esc(t('recent_tasks'))}</div>${taskHtml}</div><div><div class="label">${esc(t('evidence_claims'))}</div>${claimHtml}</div><div><div class="label">${esc(t('intervention_patches'))}</div>${patchHtml}</div>`;
     }
     function renderFeed(data) {
+      lastFeedData = data;
       const feed = $('feed');
       if (!data.messages.length) {
-        feed.innerHTML = '<div class="empty">还没有 Codex 进展。启动后台任务后，这里会显示 Codex 自己写入的自然语言更新。</div>';
+        feed.innerHTML = `<div class="empty">${esc(t('no_progress'))}</div>`;
         return;
       }
       const bottomOffset = feed.scrollHeight - feed.scrollTop;
       const shouldFollow = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
       feed.innerHTML = data.messages.map(m => {
         const human = m.role === 'human';
-        const files = Array.isArray(m.files) && m.files.length ? `<div class="meta">产物：${m.files.map(esc).join(', ')}</div>` : '';
+        const files = Array.isArray(m.files) && m.files.length ? `<div class="meta">${esc(t('artifacts'))}：${m.files.map(esc).join(', ')}</div>` : '';
         const time = formatMessageTime(m.ts);
-        const meta = [m.phase, m.status, time ? `时间 ${time}` : ''].filter(Boolean).join(' · ');
+        const meta = [m.phase, m.status, time ? `${t('time')} ${time}` : ''].filter(Boolean).join(' · ');
         return `<div class="msg ${human ? 'human' : ''}">
-          <span class="avatar">${roleName[m.role] || esc(m.role)}</span>
+          <span class="avatar">${m.role === 'human' ? (uiLanguage === 'en' ? 'You' : '你') : (m.role === 'system' ? (uiLanguage === 'en' ? 'System' : '系统') : 'Codex')}</span>
           <div class="bubble">${esc(m.text)}${meta ? `<div class="meta">${esc(meta)}</div>` : ''}${files}</div>
         </div>`;
       }).join('');
       if (shouldFollow) feed.scrollTop = feed.scrollHeight;
       else feed.scrollTop = Math.max(0, feed.scrollHeight - bottomOffset);
     }
-    async function refreshProjects() {
-      const data = await api('/api/projects');
+    function renderProjects(data) {
+      lastProjectsData = data;
       $('projectSelect').innerHTML = data.projects.map(p => {
-        const run = p.running ? '运行中' : '空闲';
-        const cur = p.current ? '当前' : run;
+        const run = p.running ? t('running') : t('idle');
+        const cur = p.current ? t('current') : run;
         return `<option value="${esc(p.research_dir)}" ${p.current ? 'selected' : ''}>${esc(p.name)} · ${esc(p.phase || '')} · ${esc(cur)}</option>`;
       }).join('');
     }
+    async function refreshProjects() { renderProjects(await api('/api/projects')); }
     async function refreshStatus() { renderStatus(await api('/api/status')); }
     async function refreshCodexStatus() { renderCodexStatus(await api('/api/codex/status')); }
     async function refreshRuntime() { renderRuntime(await api('/api/runtime')); }
     async function refreshFeed() { renderFeed(await api('/api/stream?limit=80')); }
     async function refreshTree() {
       const data = await api('/api/tree');
-      $('fileTreeCount').textContent = `${data.files.length} 个`;
+      $('fileTreeCount').textContent = t('file_count', {count: data.files.length});
       if (!data.files.length) {
-        $('fileTree').innerHTML = '<p class="muted" style="padding:8px">暂无文件</p>';
+        $('fileTree').innerHTML = `<p class="muted" style="padding:8px">${esc(t('no_files'))}</p>`;
         return;
       }
       const tree = buildFileTree(data.files);
@@ -3458,14 +3678,29 @@ def index_html_cn_v3() -> bytes:
         el.addEventListener('click', () => window.open('/preview?path=' + encodeURIComponent(el.dataset.path), '_blank'));
       });
     }
-    async function refreshMemory() {
-      const mem = await api('/api/memory');
+    function memoryDescription(profile) {
+      return ({
+        focused: uiLanguage === 'en' ? 'Fast iteration: reads handoff, summary, and human intervention while reducing stale context.' : '适合快速迭代：读取阶段交接、研究摘要和人工介入，减少旧信息干扰。',
+        balanced: uiLanguage === 'en' ? 'Recommended: reads handoff, phase summaries, intervention, artifact index, and claim/evidence memory.' : '推荐：读取阶段交接、阶段摘要、人工介入、产物索引和 claim/evidence 记忆。',
+        deep: uiLanguage === 'en' ? 'For debugging or long recovery: additionally reads logs, decision memory, and risk memory.' : '适合排错或长链路恢复：额外读取日志、决策记忆和风险记忆。',
+        clean: uiLanguage === 'en' ? 'Keeps only task, handoff, and intervention to reduce stale context.' : '只保留任务、阶段交接和人工介入，适合想降低旧上下文影响时使用。',
+        custom: t('custom_memory_note')
+      })[profile] || '';
+    }
+    function renderMemory(mem) {
+      lastMemoryData = mem;
       $('memoryProfile').value = mem.profile || 'balanced';
-      $('memoryProfileText').textContent = mem.description || '';
+      $('memoryProfileText').textContent = memoryDescription(mem.profile || 'balanced') || mem.description || '';
       $('memSummary').checked = !!mem.summary;
       $('memLogs').checked = !!mem.logs;
       $('memHuman').checked = !!mem.human_interventions;
       $('memArtifacts').checked = !!mem.artifact_index;
+    }
+    async function refreshMemory() { renderMemory(await api('/api/memory')); }
+    async function saveUiLanguage(lang, refresh = false) {
+      applyLanguage(lang);
+      await api('/api/ui-config', {method: 'POST', body: JSON.stringify({language: uiLanguage})});
+      if (refresh) await refreshAll();
     }
     async function refreshAll() {
       const results = await Promise.allSettled([refreshProjects(), refreshStatus(), refreshRuntime(), refreshCodexStatus(), refreshFeed(), refreshTree(), refreshMemory()]);
@@ -3474,6 +3709,7 @@ def index_html_cn_v3() -> bytes:
     async function switchProject(path) {
       try {
         await api('/api/project/switch', {method: 'POST', body: JSON.stringify({research_dir: path})});
+        await api('/api/ui-config', {method: 'POST', body: JSON.stringify({language: uiLanguage})});
         openTreeFolders.clear();
         treeInitialized = false;
         await refreshAll();
@@ -3482,17 +3718,18 @@ def index_html_cn_v3() -> bytes:
     async function createProject() {
       const task = $('newProjectTask').value.trim();
       if (!task) {
-        setError('新研究方向不能为空');
+        setError(t('empty_new_task'));
         return;
       }
       const btn = $('newProjectBtn');
       btn.disabled = true;
-      btn.textContent = '创建中';
+      btn.textContent = t('creating');
       try {
         await api('/api/project/create', {method: 'POST', body: JSON.stringify({
           task,
           name: $('newProjectName').value.trim()
         })});
+        await api('/api/ui-config', {method: 'POST', body: JSON.stringify({language: uiLanguage})});
         $('newProjectTask').value = '';
         $('newProjectName').value = '';
         openTreeFolders.clear();
@@ -3500,10 +3737,13 @@ def index_html_cn_v3() -> bytes:
         await refreshAll();
       } finally {
         btn.disabled = false;
-        btn.textContent = '新建并切换';
+        btn.textContent = t('create_and_switch');
       }
     }
+    applyLanguage(uiLanguage);
     $('refreshBtn').addEventListener('click', refreshAll);
+    $('langZhBtn').addEventListener('click', () => saveUiLanguage('zh', true));
+    $('langEnBtn').addEventListener('click', () => saveUiLanguage('en', true));
     $('refreshRuntimeBtn').addEventListener('click', refreshRuntime);
     $('projectSelect').addEventListener('change', () => switchProject($('projectSelect').value));
     $('switchPathBtn').addEventListener('click', () => {
@@ -3514,8 +3754,8 @@ def index_html_cn_v3() -> bytes:
     $('startBtn').addEventListener('click', async () => {
       const cycles = $('cyclesInput').value.trim();
       const duration = $('durationInput').value.trim();
-      $('statusTitle').textContent = '正在启动后台任务';
-      $('statusSub').textContent = cycles || duration ? '按设定条件运行，结束后可再次启动' : '持续运行中，关闭网页不影响进程';
+      $('statusTitle').textContent = t('starting_task');
+      $('statusSub').textContent = cycles || duration ? t('run_limited') : t('run_continuous');
       try {
         await api('/api/run/start', {method: 'POST', body: JSON.stringify({
           interval: Number($('intervalInput').value || 1800),
@@ -3528,7 +3768,7 @@ def index_html_cn_v3() -> bytes:
       } catch (err) {}
     });
     $('stopBtn').addEventListener('click', async () => {
-      $('statusTitle').textContent = '正在暂停';
+      $('statusTitle').textContent = t('pausing');
       try {
         await api('/api/run/stop', {method: 'POST', body: '{}'});
         await refreshAll();
@@ -3557,8 +3797,7 @@ def index_html_cn_v3() -> bytes:
     });
     $('memoryProfile').addEventListener('change', () => {
       applyMemoryProfile($('memoryProfile').value);
-      const text = $('memoryProfile').selectedOptions[0]?.textContent || '';
-      $('memoryProfileText').textContent = text === '自定义' ? '手动选择高级来源。' : '保存后下一轮 Codex 会按这个记忆模式读取上下文。';
+      $('memoryProfileText').textContent = $('memoryProfile').value === 'custom' ? t('custom_memory_note') : t('memory_saved_note');
     });
     $('addCustomPhaseBtn').addEventListener('click', () => {
       const current = workflowRowsFromDom();
@@ -3581,6 +3820,7 @@ def index_html_cn_v3() -> bytes:
         await refreshStatus();
       } catch (err) {}
     });
+    saveUiLanguage(uiLanguage, false).catch(() => {});
     refreshAll();
     setInterval(() => {
       Promise.allSettled([refreshStatus(), refreshCodexStatus(), refreshFeed(), refreshTree()]).then(results => {
@@ -3650,6 +3890,8 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 self.send_json({"text": read_interventions(self.root)})
             elif path == "/api/memory":
                 self.send_json(read_memory_config(self.root))
+            elif path == "/api/ui-config":
+                self.send_json(ui_config.read_ui_config(self.root))
             elif path == "/api/runtime":
                 self.send_json(runtime_payload(self.root))
             elif path == "/api/tree":
@@ -3729,6 +3971,10 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True, "prompt": prompt, "path": HUMAN_INTERVENTIONS})
             elif parsed.path == "/api/memory":
                 self.send_json(write_memory_config(self.root, body))
+            elif parsed.path == "/api/ui-config":
+                config = ui_config.write_ui_config(self.root, body)
+                researchctl.append_log(self.root, f"Web UI language set to {config['language']}")
+                self.send_json(config)
             elif parsed.path == "/api/workflow":
                 if body.get("reset"):
                     try:
