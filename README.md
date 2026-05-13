@@ -240,6 +240,11 @@ paperfactory web --open
 | `paperfactory run --until "YYYY-MM-DD HH:MM:SS" --interval 1800` | Run unattended cycles. |
 | `paperfactory advance` | Advance only if current phase artifacts and report pass. |
 | `paperfactory memory` | Refresh `.research/memory/` handoff, indexes, decision/risk memory, and claim notes. |
+| `paperfactory runtime` | Refresh workflow state, evidence registry, queue, stop conditions, and memory together. |
+| `paperfactory evidence` | Refresh and inspect claim-to-evidence registry. |
+| `paperfactory queue` | Refresh and inspect the active task queue. |
+| `paperfactory control` | Inspect stop and success-condition decisions. |
+| `paperfactory intervention --message "..."` | Record a structured human intervention patch. |
 | `paperfactory validate` | Validate state and phase reports. |
 | `paperfactory web --open` | Start the interactive Web UI. |
 | `paperfactory dashboard --open` | Generate static HTML dashboard. |
@@ -254,11 +259,16 @@ paperfactory web --open
 ```text
 .research/
   state.json
+  workflow_state.json
   workflow.json
   task.md
   human_interventions.md
   progress/feed.jsonl
   memory/
+  evidence/registry.json
+  queue/tasks.jsonl
+  control/stop_conditions.json
+  interventions/patches.jsonl
   logs/
   reports/
   pages/
@@ -576,6 +586,11 @@ paperfactory web --open
 | `paperfactory run --until "YYYY-MM-DD HH:MM:SS" --interval 1800` | 无人值守循环运行。 |
 | `paperfactory advance` | 当前阶段产物和报告通过后才推进。 |
 | `paperfactory memory` | 刷新 `.research/memory/` 阶段交接、索引、决策/风险记忆和 claim 线索。 |
+| `paperfactory runtime` | 一次性刷新状态机、证据注册表、任务队列、停止条件和记忆。 |
+| `paperfactory evidence` | 刷新并查看 claim-to-evidence 注册表。 |
+| `paperfactory queue` | 刷新并查看当前任务队列。 |
+| `paperfactory control` | 查看停止条件和成功条件判断。 |
+| `paperfactory intervention --message "..."` | 记录结构化人工介入补丁。 |
 | `paperfactory validate` | 校验状态和阶段报告。 |
 | `paperfactory web --open` | 启动交互式 Web UI。 |
 | `paperfactory dashboard --open` | 生成静态 HTML dashboard。 |
@@ -590,11 +605,16 @@ paperfactory web --open
 ```text
 .research/
   state.json
+  workflow_state.json
   workflow.json
   task.md
   human_interventions.md
   progress/feed.jsonl
   memory/
+  evidence/registry.json
+  queue/tasks.jsonl
+  control/stop_conditions.json
+  interventions/patches.jsonl
   logs/
   reports/
   pages/

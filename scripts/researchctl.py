@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from paperfactory_core import memory as memory_core
+from paperfactory_core import control, evidence, interventions, memory as memory_core, task_queue, workflow
 
 
 STATE_VERSION = 1
@@ -502,6 +502,10 @@ def ensure_dirs(root: Path) -> None:
         "experiments",
         "figures",
         MEMORY_DIR,
+        "evidence",
+        "queue",
+        "control",
+        "interventions",
         "results",
         "paper",
         "reviews",
@@ -568,6 +572,55 @@ def refresh_memory(root: Path, state: dict[str, Any]) -> dict[str, Any]:
         phase_status=phase_status,
         missing=missing,
     )
+
+
+def phase_runtime_maps(root: Path, phases: tuple[Phase, ...]) -> tuple[dict[str, str | None], dict[str, list[str]]]:
+    report_statuses = {phase.key: report_status(root, phase) for phase in phases}
+    missing_by_phase = {phase.key: missing_required(root, phase) for phase in phases}
+    return report_statuses, missing_by_phase
+
+
+def stop_decision(root: Path, state: dict[str, Any]) -> dict[str, Any]:
+    phase = current_phase(state, root)
+    phase_key = "complete" if phase is None else phase.key
+    return control.evaluate_stop(root, state, phase_key)
+
+
+def refresh_runtime(root: Path, state: dict[str, Any]) -> dict[str, Any]:
+    ensure_dirs(root)
+    phases = configured_phases(root)
+    phase = current_phase(state, root)
+    report_statuses, missing_by_phase = phase_runtime_maps(root, phases)
+    workflow_payload = workflow.write_state_machine(
+        root,
+        phases,
+        state,
+        report_statuses=report_statuses,
+        missing_by_phase=missing_by_phase,
+    )
+    evidence_registry = evidence.sync_registry(root, str(state.get("task") or ""))
+    phase_status = "complete" if phase is None else (report_status(root, phase) or "missing")
+    missing = [] if phase is None else missing_required(root, phase)
+    policy = workflow.policy_for_phase(phase) if phase is not None else {}
+    queue_summary = task_queue.refresh_phase_tasks(
+        root,
+        phase,
+        missing=missing,
+        report_status=phase_status,
+        review_gate=str(policy.get("review_gate") or "phase_self_review"),
+    )
+    stop = stop_decision(root, state)
+    memory_payload = refresh_memory(root, state)
+    return {
+        "workflow": {
+            "current_phase": workflow_payload.get("current_phase"),
+            "nodes": len(workflow_payload.get("nodes", [])),
+        },
+        "evidence": evidence_registry.get("summary", {}),
+        "queue": queue_summary,
+        "stop": stop,
+        "memory": memory_payload,
+    }
 
 
 def current_phase(state: dict[str, Any], root: Path | None = None) -> Phase | None:
@@ -643,6 +696,14 @@ def resolve_route(root: Path, phases: tuple[Phase, ...], old_key: str) -> tuple[
     route = route_decision_for(root, phase) if phase else None
     if not route:
         return default_next, None
+    if phase is not None and not workflow.route_allowed(phase, str(route.get("decision") or "")):
+        return default_next, {
+            **route,
+            "from_phase": old_key,
+            "resolved_next_phase": default_next,
+            "ignored": True,
+            "ignore_reason": f"route {route.get('decision')!r} is not allowed by the phase state-machine policy",
+        }
 
     decision = str(route["decision"])
     next_key = default_next
@@ -691,7 +752,7 @@ def command_init(args: argparse.Namespace) -> int:
     append_log(root, f"Action: initialized research project at {root}")
     append_log(root, f"Rationale: initial task = {task}")
     append_log(root, f"Next: complete phase {PHASES[0].key} and write required artifacts.")
-    refresh_memory(root, state)
+    refresh_runtime(root, state)
     print(f"Initialized research project: {root}")
     print(f"Current phase: {PHASES[0].key}")
     return 0
@@ -727,7 +788,7 @@ def shell_quote(path: Path) -> str:
 
 def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     phase = current_phase(state, root)
-    refresh_memory(root, state)
+    runtime = refresh_runtime(root, state)
     controller = Path(__file__).resolve()
     tools_doc = controller.parents[1] / "docs" / "open-research-tooling.md"
     if phase is None:
@@ -877,19 +938,29 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     memory_reads.append(".research/memory/handoff.md")
     if memory["summary"]:
         memory_reads.append(".research/results/summary.md")
+        memory_reads.append(".research/memory/global_memory.md")
+        memory_reads.append(".research/memory/phase_memory.md")
         memory_reads.append(".research/memory/phase_summaries.jsonl")
     if memory["logs"]:
         memory_reads.append(".research/logs/research.log")
         memory_reads.append(".research/memory/decision_memory.json")
         memory_reads.append(".research/memory/risk_memory.json")
+        memory_reads.append(".research/memory/negative_memory.json")
     if memory["human_interventions"]:
         memory_reads.append(".research/human_interventions.md when present")
+        memory_reads.append(".research/interventions/patches.jsonl when present")
     if memory["artifact_index"]:
         memory_reads.append(".research/memory/artifact_index.json")
         memory_reads.append(".research/memory/claim_memory.json")
+        memory_reads.append(".research/memory/writing_memory.json")
+        memory_reads.append(".research/evidence/registry.json")
+        memory_reads.append(".research/queue/tasks.jsonl")
         memory_reads.append("the current phase required artifact files when present")
     memory_list = "\n".join(f"- {item}" for item in memory_reads)
     progress_feed = root / "progress" / "feed.jsonl"
+    next_task = runtime.get("queue", {}).get("next_task") if isinstance(runtime.get("queue"), dict) else None
+    next_task_text = json.dumps(next_task, ensure_ascii=False, indent=2) if next_task else "No pending task is currently selected."
+    stop_text = json.dumps(runtime.get("stop", {}), ensure_ascii=False, indent=2)
 
     return f"""You are running the Codex PaperFactory long-horizon workflow.
 
@@ -917,6 +988,19 @@ User-visible progress feed:
 - The message must be natural language for the human user. Do not dump raw logs, stack traces, or tool output into this feed.
 - Maintain a concise user-facing phase page at .research/pages/{phase.key}.md. Update it after meaningful work with: what changed, evidence produced, decisions made, blockers, and next action. This page is for the UI, so write it in natural language and link artifact paths.
 
+Runtime control files:
+- State-machine view: .research/workflow_state.json
+- Evidence registry: .research/evidence/registry.json
+- Task queue: .research/queue/tasks.jsonl
+- Human intervention patches: .research/interventions/patches.jsonl
+- Stop/success conditions: .research/control/stop_conditions.json
+
+Current queue-selected task:
+{next_task_text}
+
+Current stop/success decision:
+{stop_text}
+
 Phase focus:
 {focus_list}
 {companion_text}
@@ -929,6 +1013,13 @@ Operating rules:
 {memory_list}
 - Treat .research/memory/handoff.md as the first cross-phase memory entry point. It is generated by the controller from phase reports, artifact state, route decisions, risks, and claim/evidence files.
 - Do not rely on chat history for cross-phase continuity. If a decision, risk, result, or paper claim matters later, persist it in the relevant artifact and phase report so the memory bundle can carry it forward.
+- Treat .research/workflow_state.json as the explicit state-machine contract. Obey each phase's entry_condition, exit_gate, failure_policy, allowed_routes, retry_budget, max_runtime_hours, required_memory_inputs, and review_gate.
+- Inside every phase, run this internal loop before writing the final report: execute -> self-check -> repair -> evidence-check -> report -> route decision.
+- Use .research/queue/tasks.jsonl as the task queue. Pick the highest-priority pending task for the active phase, mark it running/done/failed/blocked, update retry_count and notes, and create new tasks when experiments or repairs need follow-up work.
+- Use .research/evidence/registry.json as the claim-safety source of truth. Register every important claim with supporting_artifacts, experiment_commands, metric_sources, figure_table_sources, confidence, and paper_safe. Paper prose may use factual claims only when evidence marks them verified or paper_safe.
+- Treat .research/interventions/patches.jsonl as structured human patches. Apply pending patches to scope, workflow, memory, or stop conditions as appropriate, then mark the patch status in that file.
+- Honor .research/control/stop_conditions.json. If stop conditions say to pause, write a blocked progress event and do not invent workarounds.
+- Run the active phase's lightweight reviewer gate from .research/workflow_state.json before declaring status complete. Record the reviewer finding under report.self_check.review_gate.
 - Before relying on an external research tool, check whether it is available with ./paperfactory doctor, command -v, or a small import test. Prefer installed tools; do not block the phase only because an optional tool is missing.
 - The base PaperFactory workflow is fixed. Treat user-inserted custom phases as extra checkpoints, not as permission to weaken required evidence gates.
 - Append concise audit entries to .research/logs/research.log with action, rationale, outcome, blocker if any, and next step.
@@ -938,7 +1029,7 @@ Operating rules:
 - Before finishing this phase, run a cleanup pass. Remove only obvious temporary files, caches, duplicate drafts, empty files, and obsolete scratch outputs created by this phase. Never delete required artifacts, raw experiment outputs, source data, citations, configs, logs, or files needed to reproduce a result.
 - If a file may have evidence value but should leave the active folder, move it to .research/archive/cleanup/{phase.key}/ with a short reason instead of deleting it.
 - Record cleanup in .research/reports/{phase.key}.json under "cleanup": {{"removed":["..."],"archived":["..."],"kept":["..."],"notes":"..."}}. Use empty lists when nothing needed cleanup.
-- Write .research/reports/{phase.key}.json. Set status to "complete" only if the gate is genuinely satisfied; otherwise use "needs_more_work" or "blocked".
+- Write .research/reports/{phase.key}.json. Set status to "complete" only if the gate is genuinely satisfied; otherwise use "needs_more_work" or "blocked". Include "self_check": {{"executed":["..."],"issues":["..."],"repairs":["..."],"evidence_checked":["..."],"review_gate":"<gate name>","review_result":"pass|needs_more_work|blocked"}}.
 - In that report, include a self-check route object:
   {{"decision":"advance|repeat|jump_back|skip_next|jump_to","target_phase":"<phase key or complete when needed>","reason":"<why this route is scientifically safer>","confidence":0.0}}
 - Use "repeat" when this phase should be redone, "jump_back" when an earlier fixed or custom phase must be revisited, "skip_next" only when the next phase is genuinely unnecessary, and "jump_to" only when you can name a valid target phase.
@@ -988,7 +1079,7 @@ def command_advance(args: argparse.Namespace) -> int:
     write_state(root, state)
     route_note = f" route={route}" if route else ""
     append_log(root, f"Outcome: advanced phase {old_key} -> {next_key}.{route_note}")
-    refresh_memory(root, state)
+    refresh_runtime(root, state)
     print(f"Advanced phase: {old_key} -> {next_key}")
     if route:
         print(f"Route decision: {route.get('decision')} {route.get('reason') or ''}".rstrip())
@@ -1030,6 +1121,83 @@ def command_memory(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_runtime(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args)
+    state = load_state(root)
+    payload = refresh_runtime(root, state)
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"Refreshed runtime control files under: {root}")
+        print(f"Workflow nodes: {payload['workflow']['nodes']}")
+        print(f"Evidence: {payload['evidence']}")
+        print(f"Queue counts: {payload['queue']['counts']}")
+        print(f"Stop: {payload['stop']['should_stop']} {payload['stop']['reasons']}")
+    return 0
+
+
+def command_evidence(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args)
+    state = load_state(root)
+    registry = evidence.sync_registry(root, str(state.get("task") or ""))
+    if args.json:
+        print(json.dumps(registry, indent=2, ensure_ascii=False))
+    else:
+        print(f"Evidence registry: {root / evidence.REGISTRY_FILE}")
+        print(json.dumps(registry.get("summary", {}), indent=2, ensure_ascii=False))
+    return 0
+
+
+def command_queue(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args)
+    state = load_state(root)
+    phase = current_phase(state, root)
+    phase_status = "complete" if phase is None else (report_status(root, phase) or "missing")
+    missing = [] if phase is None else missing_required(root, phase)
+    policy = workflow.policy_for_phase(phase) if phase is not None else {}
+    payload = task_queue.refresh_phase_tasks(
+        root,
+        phase,
+        missing=missing,
+        report_status=phase_status,
+        review_gate=str(policy.get("review_gate") or "phase_self_review"),
+    )
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"Task queue: {root / task_queue.TASKS_FILE}")
+        print(f"Counts: {payload['counts']}")
+        if payload.get("next_task"):
+            print(f"Next: {payload['next_task'].get('title')}")
+    return 0
+
+
+def command_control(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args)
+    state = load_state(root)
+    payload = stop_decision(root, state)
+    if args.json:
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+    else:
+        print(f"Stop conditions: {root / control.STOP_CONDITIONS_FILE}")
+        print(f"Should stop: {payload['should_stop']}")
+        print(f"Reasons: {payload['reasons']}")
+        print(f"Success: {payload['success']}")
+    return 0
+
+
+def command_intervention(args: argparse.Namespace) -> int:
+    root = resolve_research_dir(args)
+    _ = load_state(root)
+    patch = interventions.append_patch(root, args.message, kind=args.kind)
+    append_log(root, f"Human intervention patch recorded: {patch['id']} kind={patch['kind']}")
+    if args.json:
+        print(json.dumps(patch, indent=2, ensure_ascii=False))
+    else:
+        print(f"Recorded intervention patch: {patch['id']} ({patch['kind']})")
+    return 0
+
+
 def command_validate(args: argparse.Namespace) -> int:
     root = resolve_research_dir(args)
     state = load_state(root)
@@ -1059,6 +1227,19 @@ def command_validate(args: argparse.Namespace) -> int:
         if report.get("phase") not in (phase.key, None):
             print(f"ERROR: report {phase.key} phase field does not match")
             errors += 1
+        if status in COMPLETE_STATUSES and not isinstance(report.get("self_check"), dict):
+            print(f"WARN: report {phase.key} is complete but missing self_check")
+            warnings += 1
+
+    for rel in (
+        "workflow_state.json",
+        evidence.REGISTRY_FILE,
+        task_queue.TASKS_FILE,
+        control.STOP_CONDITIONS_FILE,
+    ):
+        if not rel_exists_nonempty(root, rel):
+            print(f"WARN: runtime artifact missing: {rel}")
+            warnings += 1
 
     print(f"Validation: {errors} error(s), {warnings} warning(s)")
     return 1 if errors else 0
@@ -1095,6 +1276,28 @@ def build_parser() -> argparse.ArgumentParser:
     memory = sub.add_parser("memory", help="Refresh the generated cross-phase memory bundle")
     memory.add_argument("--json", action="store_true", help="Emit machine-readable refresh summary")
     memory.set_defaults(func=command_memory)
+
+    runtime = sub.add_parser("runtime", help="Refresh workflow, evidence, queue, control, and memory files")
+    runtime.add_argument("--json", action="store_true", help="Emit machine-readable runtime summary")
+    runtime.set_defaults(func=command_runtime)
+
+    evidence_cmd = sub.add_parser("evidence", help="Refresh and show the evidence registry")
+    evidence_cmd.add_argument("--json", action="store_true", help="Emit the full evidence registry")
+    evidence_cmd.set_defaults(func=command_evidence)
+
+    queue_cmd = sub.add_parser("queue", help="Refresh and show the active task queue")
+    queue_cmd.add_argument("--json", action="store_true", help="Emit machine-readable queue summary")
+    queue_cmd.set_defaults(func=command_queue)
+
+    control_cmd = sub.add_parser("control", help="Show stop and success-condition decision")
+    control_cmd.add_argument("--json", action="store_true", help="Emit machine-readable control decision")
+    control_cmd.set_defaults(func=command_control)
+
+    intervention = sub.add_parser("intervention", help="Record a structured human intervention patch")
+    intervention.add_argument("--message", required=True, help="Human intervention text")
+    intervention.add_argument("--kind", choices=sorted(interventions.PATCH_KINDS), help="Optional patch kind")
+    intervention.add_argument("--json", action="store_true", help="Emit the recorded patch")
+    intervention.set_defaults(func=command_intervention)
 
     validate = sub.add_parser("validate", help="Validate controller state and reports")
     validate.set_defaults(func=command_validate)

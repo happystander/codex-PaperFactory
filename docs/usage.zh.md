@@ -49,6 +49,8 @@
 - 进展流来自 Codex 自己写入的 `.research/progress/feed.jsonl`，不生成伪进展，也不把原始日志按换行拆成聊天气泡；
 - 可控制轮数、间隔和总运行时长；
 - 可选择下一轮 prompt 读取多少 `.research/memory/` 自动记忆包和源产物；记忆包包含阶段交接、阶段摘要、产物索引、跳转决策、风险和 claim/evidence 线索；
+- 可查看 `.research/workflow_state.json` 状态机、`.research/evidence/registry.json` 证据注册表、`.research/queue/tasks.jsonl` 任务队列和 `.research/control/stop_conditions.json` 停止/成功条件；
+- 人工介入会同时保存为 `.research/interventions/patches.jsonl` 结构化补丁，便于 Codex 判断是修改 scope、workflow、memory 还是 stop condition；
 - 基础研究流程固定不可改，但可以在基础阶段之间插入自定义阶段，并为每个自定义阶段写独立 Prompt；
 - 人工介入聊天：消息写入 `.research/human_interventions.md`，下一轮 prompt 自动带上；
 - 编辑初始研究任务；

@@ -223,6 +223,7 @@ def main() -> int:
             assert intervention["ok"] is True
             assert "优先检查引用真实性" in intervention["prompt"]
             assert (root / "human_interventions.md").exists()
+            assert (root / "interventions" / "patches.jsonl").exists()
 
             memory = fetch_json(base + "/api/memory")
             assert memory["summary"] is True

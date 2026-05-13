@@ -42,11 +42,15 @@ def memory_config_path(root: Path) -> Path:
 def memory_bundle_status(root: Path) -> dict[str, Any]:
     names = (
         "handoff.md",
+        "global_memory.md",
+        "phase_memory.md",
         "phase_summaries.jsonl",
         "artifact_index.json",
         "decision_memory.json",
         "risk_memory.json",
+        "negative_memory.json",
         "claim_memory.json",
+        "writing_memory.json",
     )
     files: dict[str, dict[str, Any]] = {}
     mtimes: list[float] = []
@@ -148,4 +152,3 @@ def write_memory_config(root: Path, config: dict[str, Any]) -> dict[str, Any]:
         researchctl.append_log(root, f"Memory bundle refresh failed after config update: {exc}")
     researchctl.append_log(root, "Web UI memory config updated")
     return read_memory_config(root)
-

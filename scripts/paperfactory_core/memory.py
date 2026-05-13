@@ -387,6 +387,101 @@ def build_claim_memory(root: Path) -> dict[str, Any]:
     }
 
 
+def build_global_memory_markdown(state: dict[str, Any], records: list[dict[str, Any]], evidence_registry: dict[str, Any] | None) -> str:
+    summary = evidence_registry.get("summary", {}) if isinstance(evidence_registry, dict) else {}
+    lines = [
+        "# Global Research Memory",
+        "",
+        f"- Updated: {iso_now()}",
+        f"- Task: {state.get('task', '')}",
+        f"- Current phase: {state.get('phase')}",
+        f"- Verified claims: {summary.get('claims_verified', 0)}",
+        f"- Paper-safe claims: {summary.get('paper_safe_claims', 0)}",
+        "",
+        "## Stable Phase Facts",
+        "",
+    ]
+    if records:
+        for record in records[-MEMORY_RECENT_PHASE_LIMIT:]:
+            summary_text = record.get("summary") or record.get("next") or ""
+            if summary_text:
+                lines.append(f"- `{record.get('phase')}`: {compact_text(summary_text, 320)}")
+    else:
+        lines.append("- No stable phase facts recorded yet.")
+    return "\n".join(lines) + "\n"
+
+
+def build_phase_memory_markdown(phase: Any | None, *, phase_status: str, missing: list[str]) -> str:
+    phase_key = "complete" if phase is None else getattr(phase, "key", "")
+    lines = [
+        "# Active Phase Memory",
+        "",
+        f"- Updated: {iso_now()}",
+        f"- Phase: `{phase_key}`",
+        f"- Report status: {phase_status}",
+        "",
+    ]
+    if phase is None:
+        lines.append("The workflow is complete.")
+    else:
+        lines.extend(
+            [
+                f"## Objective\n\n{getattr(phase, 'objective', '')}",
+                f"## Exit Gate\n\n{getattr(phase, 'gate', '')}",
+                "## Missing Required Artifacts",
+                "",
+            ]
+        )
+        if missing:
+            lines.extend(f"- `{item}`" for item in missing)
+        else:
+            lines.append("- none")
+    return "\n".join(lines) + "\n"
+
+
+def build_negative_memory(records: list[dict[str, Any]], risk_memory: dict[str, Any]) -> dict[str, Any]:
+    negative_items: list[dict[str, Any]] = []
+    for record in records:
+        status = str(record.get("status") or "").lower()
+        if status in {"blocked", "failed", "needs_more_work", "error"}:
+            negative_items.append(
+                {
+                    "phase": record.get("phase"),
+                    "status": status,
+                    "summary": record.get("summary"),
+                    "risks": record.get("risks", []),
+                    "source": record.get("report"),
+                }
+            )
+    return {
+        "schema_version": 1,
+        "updated_at": iso_now(),
+        "failed_or_rejected_paths": negative_items[-80:],
+        "open_risks": list(risk_memory.get("open_risks") or [])[-80:],
+        "rule": "Do not revive rejected ideas, failed protocols, or unsupported claims unless a later artifact explicitly repairs them.",
+    }
+
+
+def build_writing_memory(root: Path, claim_memory: dict[str, Any], evidence_registry: dict[str, Any] | None) -> dict[str, Any]:
+    summary = evidence_registry.get("summary", {}) if isinstance(evidence_registry, dict) else {}
+    writing_files = []
+    for rel in ("paper/claim_evidence_map.md", "paper/page_budget.md", "paper/writing_issues.csv", "paper/paper_draft.md"):
+        path = root / rel
+        try:
+            exists = path.exists() and path.stat().st_size > 0
+        except OSError:
+            exists = False
+        writing_files.append({"path": rel, "exists": exists})
+    return {
+        "schema_version": 1,
+        "updated_at": iso_now(),
+        "evidence_summary": summary,
+        "claim_sources": claim_memory.get("sources", []),
+        "writing_files": writing_files,
+        "rule": "Draft factual claims only from paper_safe or explicitly verified evidence registry entries.",
+    }
+
+
 def build_handoff_markdown(
     root: Path,
     state: dict[str, Any],
@@ -413,11 +508,12 @@ def build_handoff_markdown(
         "## Read Order",
         "",
         "1. `.research/memory/handoff.md`",
-        "2. `.research/state.json` and `.research/task.md`",
-        "3. `.research/memory/phase_summaries.jsonl`",
-        "4. `.research/memory/decision_memory.json` and `.research/memory/risk_memory.json`",
-        "5. `.research/memory/artifact_index.json`",
-        "6. Current phase required artifacts and any human intervention notes",
+        "2. `.research/memory/global_memory.md` and `.research/memory/phase_memory.md`",
+        "3. `.research/state.json` and `.research/task.md`",
+        "4. `.research/memory/phase_summaries.jsonl`",
+        "5. `.research/memory/decision_memory.json`, `.research/memory/risk_memory.json`, and `.research/memory/negative_memory.json`",
+        "6. `.research/memory/artifact_index.json` and `.research/memory/writing_memory.json`",
+        "7. Current phase required artifacts and any human intervention patches",
         "",
         "## Active Gate",
         "",
@@ -521,12 +617,21 @@ def refresh_memory(
     decision_memory = build_decision_memory(state, records)
     risk_memory = build_risk_memory(state, records)
     claim_memory = build_claim_memory(root)
+    evidence_registry = read_json(root / "evidence" / "registry.json")
+    global_memory = build_global_memory_markdown(state, records, evidence_registry)
+    phase_memory = build_phase_memory_markdown(phase, phase_status=phase_status, missing=missing)
+    negative_memory = build_negative_memory(records, risk_memory)
+    writing_memory = build_writing_memory(root, claim_memory, evidence_registry)
 
     write_json(memory_path(root, "artifact_index.json"), artifact_index)
     write_phase_summaries(root, records)
     write_json(memory_path(root, "decision_memory.json"), decision_memory)
     write_json(memory_path(root, "risk_memory.json"), risk_memory)
     write_json(memory_path(root, "claim_memory.json"), claim_memory)
+    write_json(memory_path(root, "negative_memory.json"), negative_memory)
+    write_json(memory_path(root, "writing_memory.json"), writing_memory)
+    memory_path(root, "global_memory.md").write_text(global_memory, encoding="utf-8")
+    memory_path(root, "phase_memory.md").write_text(phase_memory, encoding="utf-8")
     memory_path(root, "handoff.md").write_text(
         build_handoff_markdown(
             root,
@@ -548,5 +653,5 @@ def refresh_memory(
         "reports": len(records),
         "artifacts": int(artifact_index.get("total_indexed") or 0),
         "claim_sources": len(claim_memory.get("sources") or []),
+        "layered_memory": True,
     }
-

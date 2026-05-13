@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import researchctl
+from paperfactory_core import interventions
 from paperfactory_core.web_memory import read_memory_config, write_memory_config
 
 
@@ -605,6 +606,7 @@ def append_intervention(root: Path, message: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(f"\n## {now()}\n\n{text}\n")
+    interventions.append_patch(root, text)
     researchctl.append_log(root, "Human intervention recorded; next generated prompt will include it")
     append_progress_event(root, "human", text, status="intervention")
 

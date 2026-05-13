@@ -24,6 +24,10 @@ scripts/
     memory.py                     # generated cross-phase memory bundle
     web_memory.py                 # Web memory profile config
     workflow.py                   # phase definitions and custom phase config
+    evidence.py                   # claim-to-evidence registry
+    task_queue.py                 # persistent task queue
+    control.py                    # stop/success conditions
+    interventions.py              # structured human patches
     state.py                      # state, logs, report IO
     prompts.py                    # phase prompt construction
     jobs.py                       # detached run lifecycle
@@ -37,21 +41,21 @@ scripts/
 | Step | Status | Scope | Safety Check |
 | --- | --- | --- | --- |
 | 1 | Done | Extract generated memory bundle from `researchctl.py` into `paperfactory_core/memory.py`; extract Web memory profiles into `paperfactory_core/web_memory.py`. | Existing CLI/Web tests plus manual `paperfactory memory --json`. |
-| 2 | Next | Extract workflow phase definitions, custom phase config, and route normalization into `paperfactory_core/workflow.py`. | `researchctl_test.py` must prove custom phase insertion, skip, jump, and repeat still work. |
-| 3 | Next | Extract state/report/log IO into `paperfactory_core/state.py`. | Init, status, advance, validate, and memory refresh tests. |
-| 4 | Next | Extract prompt construction into `paperfactory_core/prompts.py`. | Golden prompt smoke assertions for memory reads, cleanup contract, progress feed, custom prompt, and phase route schema. |
-| 5 | Next | Extract detached run lifecycle and PID handling into `paperfactory_core/jobs.py`. | Web start/stop tests and dry-run background job smoke tests. |
-| 6 | Next | Extract Codex session/quota parsing into `paperfactory_core/codex_status.py`. | Unit fixtures for token_count JSONL parsing and missing-session fallback. |
-| 7 | Next | Move artifact tree, file preview, figure listing, and phase page rendering into `paperfactory_core/artifacts.py`. | Web artifact/preview tests for text, SVG, PDF, and missing files. |
-| 8 | Next | Move embedded UI strings to `paperfactory_core/web_assets/` or a tiny template layer. | Web smoke test plus browser screenshot/manual UI check. |
-| 9 | Next | Turn `scripts/paperfactory.py`, `scripts/researchctl.py`, and `scripts/paperfactory_web.py` into thin adapters. | Full smoke suite and `./paperfactory doctor`. |
+| 2 | In progress | Add explicit workflow state-machine view plus evidence registry, task queue, stop/success conditions, layered memory, and structured intervention patches. | `researchctl_test.py`, `paperfactory_test.py`, and runtime smoke commands. |
+| 3 | Next | Extract workflow phase definitions, custom phase config, and route normalization into `paperfactory_core/workflow.py`. | `researchctl_test.py` must prove custom phase insertion, skip, jump, and repeat still work. |
+| 4 | Next | Extract state/report/log IO into `paperfactory_core/state.py`. | Init, status, advance, validate, and memory refresh tests. |
+| 5 | Next | Extract prompt construction into `paperfactory_core/prompts.py`. | Golden prompt smoke assertions for memory reads, cleanup contract, progress feed, custom prompt, and phase route schema. |
+| 6 | Next | Extract detached run lifecycle and PID handling into `paperfactory_core/jobs.py`. | Web start/stop tests and dry-run background job smoke tests. |
+| 7 | Next | Extract Codex session/quota parsing into `paperfactory_core/codex_status.py`. | Unit fixtures for token_count JSONL parsing and missing-session fallback. |
+| 8 | Next | Move artifact tree, file preview, figure listing, and phase page rendering into `paperfactory_core/artifacts.py`. | Web artifact/preview tests for text, SVG, PDF, and missing files. |
+| 9 | Next | Move embedded UI strings to `paperfactory_core/web_assets/` or a tiny template layer. | Web smoke test plus browser screenshot/manual UI check. |
+| 10 | Next | Turn `scripts/paperfactory.py`, `scripts/researchctl.py`, and `scripts/paperfactory_web.py` into thin adapters. | Full smoke suite and `./paperfactory doctor`. |
 
 ## Rules For Each Step
 
-- Keep public commands stable: `paperfactory new/status/prompt/run/advance/memory/web/doctor`.
+- Keep public commands stable: `paperfactory new/status/prompt/run/advance/memory/runtime/evidence/queue/control/intervention/web/doctor`.
 - Move one responsibility per commit.
 - Add or preserve a smoke test for the behavior being moved.
 - Do not rewrite UI and backend behavior in the same step.
 - Prefer pure functions in `paperfactory_core/`; adapters should parse args, call core logic, and print/send responses.
 - Generated `.research/` artifacts remain backward compatible unless a migration is explicitly added.
-

@@ -54,8 +54,24 @@ The controller also generates a cross-phase memory bundle under `.research/memor
 | `memory/decision_memory.json` | Controller route history and report route decisions. |
 | `memory/risk_memory.json` | Risks and non-complete report statuses that should not be lost across phases. |
 | `memory/claim_memory.json` | Pointers and excerpts from claim/evidence files such as `paper/claim_evidence_map.md`, `results/main_results.md`, and `method/atomic_concepts.md`. |
+| `memory/global_memory.md` | Stable task and phase facts for the whole research run. |
+| `memory/phase_memory.md` | Active phase objective, gate, status, and missing artifacts. |
+| `memory/negative_memory.json` | Failed, blocked, rejected, or risky paths Codex should not accidentally revive. |
+| `memory/writing_memory.json` | Writing-stage view of claim/evidence and paper files. |
 
 These files are generated from durable artifacts. Do not edit them as the source of truth; update the phase report, result artifact, or paper file that feeds them.
+
+The long-running workflow also maintains operational control files:
+
+| File | Purpose |
+| --- | --- |
+| `workflow_state.json` | Explicit state-machine view for each phase: `entry_condition`, `exit_gate`, `failure_policy`, `allowed_routes`, `retry_budget`, `max_runtime_hours`, `required_memory_inputs`, and `review_gate`. |
+| `evidence/registry.json` | Claim-centered evidence flow with supporting artifacts, commands, metric sources, figure/table sources, confidence, and `paper_safe`. |
+| `queue/tasks.jsonl` | Persistent task queue with `pending`, `running`, `done`, `failed`, `blocked`, and retry metadata. |
+| `interventions/patches.jsonl` | Structured human intervention patches for scope, workflow, memory, and stop-condition changes. |
+| `control/stop_conditions.json` | Stop and success conditions for unattended runs. |
+
+Every phase should run an internal loop before setting `status: complete`: execute, self-check, repair, evidence-check, write the report, and choose the route. Record that loop in `report.self_check`.
 
 Every phase should finish with a cleanup pass. Remove only obvious temporary files, caches, duplicate drafts, empty files, and obsolete scratch outputs created by that phase. When a file may have evidence or reproducibility value, move it to `.research/archive/cleanup/<phase>/` instead of deleting it, and record the reason in the phase report `cleanup` object.
 

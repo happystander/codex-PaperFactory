@@ -49,6 +49,8 @@ It provides:
 - cycle count, interval, and optional run-duration controls;
 - friendly memory profiles for light, standard, deep, and clean-start modes. Every mode starts from the generated `.research/memory/handoff.md`; stronger modes add phase summaries, artifact index, decision/risk memory, claim/evidence notes, logs, and current artifacts;
 - human intervention messages saved to `.research/human_interventions.md` and injected into the next generated prompt;
+- structured intervention patches saved to `.research/interventions/patches.jsonl`, so user changes can target scope, workflow, memory, or stop conditions instead of remaining as plain chat history;
+- runtime control files visible in the file tree: `.research/workflow_state.json`, `.research/evidence/registry.json`, `.research/queue/tasks.jsonl`, and `.research/control/stop_conditions.json`;
 - task editing that updates both `.research/task.md` and `.research/state.json`;
 - artifact browsing with full-page preview for text, image, SVG, and PDF files under `.research/`;
 - figure browsing for `.svg`, `.pdf`, `.png`, `.jpg`, `.jpeg`, and `.webp` files under `.research/figures/`;

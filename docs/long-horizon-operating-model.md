@@ -46,3 +46,15 @@ Long runs now use a generated memory layer instead of asking Codex to reread arb
 - `memory/claim_memory.json` points writing stages back to claim/evidence artifacts.
 
 The source of truth remains the phase report and artifact files. Generated memory can be refreshed with `paperfactory memory`; it should not be manually edited as the canonical record.
+
+## Runtime Control Layer
+
+The workflow is no longer only a linear phase list. Each prompt refreshes a runtime layer:
+
+- `workflow_state.json` exposes each phase as a state-machine node with entry condition, exit gate, failure policy, allowed routes, retry budget, max runtime, required memory inputs, and a lightweight reviewer gate.
+- `evidence/registry.json` makes evidence the central object: claims point to artifacts, experiment commands, metric sources, figure/table sources, confidence, and whether the claim is paper-safe.
+- `queue/tasks.jsonl` gives Codex a durable task queue, so long runs can resume from pending/running/failed work instead of re-planning from scratch.
+- `interventions/patches.jsonl` stores user messages as structured patches for scope, workflow, memory, or stop-condition changes.
+- `control/stop_conditions.json` holds stop and success conditions for unattended operation.
+
+Every phase is expected to run an internal execute, self-check, repair, evidence-check, report, and route loop. Reviewer gates are staged before final paper review: novelty after survey, innovation after method design, experiment credibility after smoke tests, claim support after evidence assembly, and top-conference writing review after drafting.

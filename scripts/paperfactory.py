@@ -504,6 +504,12 @@ def command_run(args: argparse.Namespace) -> int:
     stop_at = parse_until(args.until) if args.until else None
     completed = 0
     while True:
+        state = researchctl.load_state(root)
+        stop = researchctl.stop_decision(root, state)
+        if stop.get("should_stop"):
+            researchctl.append_log(root, f"Loop stop: control decision reasons={stop.get('reasons')}")
+            print(f"Stopped by control conditions: {', '.join(stop.get('reasons') or [])}")
+            break
         if stop_at is not None and time.time() >= stop_at:
             researchctl.append_log(root, f"Loop stop: reached until={args.until}")
             break
@@ -511,6 +517,17 @@ def command_run(args: argparse.Namespace) -> int:
             break
         rc = run_codex_cycle(root, args.codex_bin, args.dry_run)
         completed += 1
+        cycle_state = researchctl.load_state(root)
+        cycle_state.setdefault("cycles", []).append(
+            {
+                "completed_at": researchctl.iso_now(),
+                "returncode": rc,
+                "dry_run": bool(args.dry_run),
+                "mode": "paperfactory run",
+            }
+        )
+        researchctl.write_state(root, cycle_state)
+        researchctl.refresh_runtime(root, cycle_state)
         if args.dry_run or rc != 0:
             return rc
         if cycles is not None and completed >= cycles:
@@ -534,6 +551,28 @@ def command_log(args: argparse.Namespace) -> int:
 
 def command_memory(args: argparse.Namespace) -> int:
     return researchctl.command_memory(argparse.Namespace(research_dir=args.research_dir, json=args.json))
+
+
+def command_runtime(args: argparse.Namespace) -> int:
+    return researchctl.command_runtime(argparse.Namespace(research_dir=args.research_dir, json=args.json))
+
+
+def command_evidence(args: argparse.Namespace) -> int:
+    return researchctl.command_evidence(argparse.Namespace(research_dir=args.research_dir, json=args.json))
+
+
+def command_queue(args: argparse.Namespace) -> int:
+    return researchctl.command_queue(argparse.Namespace(research_dir=args.research_dir, json=args.json))
+
+
+def command_control(args: argparse.Namespace) -> int:
+    return researchctl.command_control(argparse.Namespace(research_dir=args.research_dir, json=args.json))
+
+
+def command_intervention(args: argparse.Namespace) -> int:
+    return researchctl.command_intervention(
+        argparse.Namespace(research_dir=args.research_dir, message=args.message, kind=args.kind, json=args.json)
+    )
 
 
 def command_web(args: argparse.Namespace) -> int:
@@ -818,6 +857,33 @@ def build_parser() -> argparse.ArgumentParser:
     add_research_dir_arg(memory)
     memory.add_argument("--json", action="store_true", help="Emit machine-readable refresh summary")
     memory.set_defaults(func=command_memory)
+
+    runtime = sub.add_parser("runtime", help="Refresh workflow, evidence, queue, control, and memory files")
+    add_research_dir_arg(runtime)
+    runtime.add_argument("--json", action="store_true", help="Emit machine-readable runtime summary")
+    runtime.set_defaults(func=command_runtime)
+
+    evidence_cmd = sub.add_parser("evidence", help="Refresh and show the evidence registry")
+    add_research_dir_arg(evidence_cmd)
+    evidence_cmd.add_argument("--json", action="store_true", help="Emit the full evidence registry")
+    evidence_cmd.set_defaults(func=command_evidence)
+
+    queue_cmd = sub.add_parser("queue", help="Refresh and show the active task queue")
+    add_research_dir_arg(queue_cmd)
+    queue_cmd.add_argument("--json", action="store_true", help="Emit machine-readable queue summary")
+    queue_cmd.set_defaults(func=command_queue)
+
+    control_cmd = sub.add_parser("control", help="Show stop and success-condition decision")
+    add_research_dir_arg(control_cmd)
+    control_cmd.add_argument("--json", action="store_true", help="Emit machine-readable control decision")
+    control_cmd.set_defaults(func=command_control)
+
+    intervention = sub.add_parser("intervention", help="Record a structured human intervention patch")
+    add_research_dir_arg(intervention)
+    intervention.add_argument("--message", required=True, help="Human intervention text")
+    intervention.add_argument("--kind", choices=sorted(researchctl.interventions.PATCH_KINDS), help="Optional patch kind")
+    intervention.add_argument("--json", action="store_true", help="Emit the recorded patch")
+    intervention.set_defaults(func=command_intervention)
 
     web = sub.add_parser("web", help="Start the interactive local Web UI")
     add_research_dir_arg(web)

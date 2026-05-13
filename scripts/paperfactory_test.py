@@ -35,6 +35,9 @@ def main() -> int:
         assert (rd / "state.json").exists()
         assert (rd / "next_prompt.md").exists()
         assert (rd / "dashboard.html").exists()
+        assert (rd / "workflow_state.json").exists()
+        assert (rd / "evidence" / "registry.json").exists()
+        assert (rd / "queue" / "tasks.jsonl").exists()
 
         proc = run(["status", "--research-dir", str(rd), "--json"], cwd)
         assert proc.returncode == 0, proc.stderr
@@ -45,6 +48,21 @@ def main() -> int:
         proc = run(["prompt", "--research-dir", str(rd)], cwd)
         assert proc.returncode == 0, proc.stderr
         assert "Wrote next prompt" in proc.stdout
+
+        proc = run(["runtime", "--research-dir", str(rd), "--json"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        runtime = json.loads(proc.stdout)
+        assert runtime["workflow"]["nodes"] == 10
+
+        proc = run(["queue", "--research-dir", str(rd), "--json"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        queue = json.loads(proc.stdout)
+        assert queue["counts"]["pending"] >= 1
+
+        proc = run(["control", "--research-dir", str(rd), "--json"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        control = json.loads(proc.stdout)
+        assert control["should_stop"] is False
 
         proc = run(["dashboard", "--research-dir", str(rd)], cwd)
         assert proc.returncode == 0, proc.stderr
