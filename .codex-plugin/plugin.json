@@ -1,6 +1,6 @@
 {
   "name": "codex-paper-factory",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Codex PaperFactory: long-horizon research automation with durable logs, phase gates, a Chinese agent-style Web UI, scientific figures, and conference-paper drafting checkpoints.",
   "author": {
     "name": "happystander",
@@ -15,6 +15,9 @@
     "codex",
     "experiments",
     "paper-writing",
+    "research-library",
+    "scholaraio",
+    "scientific-runtime",
     "page-budget",
     "best-paper-reference",
     "long-horizon",
@@ -46,6 +49,8 @@
       "Write",
       "Long Running",
       "Citations",
+      "Research Library",
+      "Scientific Runtime",
       "Paper Review",
       "Page Budgeting",
       "Best Paper References",

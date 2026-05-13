@@ -7,6 +7,7 @@ PaperFactory 的 skill 层已经覆盖科研任务拆解、文献阅读、引用
 | 层级 | 推荐工具 | 作用 | PaperFactory 阶段 |
 | --- | --- | --- | --- |
 | 文献发现 | [arXiv API](https://info.arxiv.org/help/api/user-manual.html), [OpenAlex Works API](https://docs.openalex.org/api-entities/works/filter-works), [Crossref REST API](https://www.production.crossref.org/documentation/retrieve-metadata/rest-api/), [Semantic Scholar API](https://www.semanticscholar.org/product/api/tutorial) | 检索论文、扩展相关工作、获取 DOI/arXiv/venue/year/citation 元数据 | `survey`, `paper_drafting`, `internal_review` |
+| 文献库与工作区 | [ScholarAIO](https://github.com/ZimoLiao/scholaraio), Zotero/EndNote/RIS/BibTeX 导入 | 建立任务级 paper workspace，结构化 ingest/search/show/topic/citation graph/export/citation-check，避免散乱 PDF 进入写作 | `survey`, `paper_evidence`, `paper_drafting`, `internal_review` |
 | 引用与元数据 | [Manubot](https://manubot.org/), `habanero`, `arxiv`, `semanticscholar` | DOI/arXiv/PMID 元数据补全、BibTeX/CSL 支持、引用一致性检查 | `survey`, `paper_drafting` |
 | PDF 解析 | [GROBID](https://github.com/grobidOrg/grobid), `pdftotext`, `pypdf`, `pdfminer.six` | 从论文 PDF 中抽取标题、摘要、章节、参考文献和正文文本 | `survey`, `internal_review` |
 | 论文构建 | `latexmk`, `pdflatex`, `bibtex`, `biber`, [Pandoc](https://pandoc.org/MANUAL.html), [Tectonic](https://tectonic-typesetting.github.io/en-US/) | 编译 LaTeX、转换 Markdown/LaTeX/DOCX、记录构建错误 | `paper_drafting`, `internal_review` |
@@ -15,20 +16,21 @@ PaperFactory 的 skill 层已经覆盖科研任务拆解、文献阅读、引用
 | 工作流复现 | [Snakemake](https://snakemake.github.io/), `make` | 把多步实验组织成可重跑的 DAG 或命令目标 | `cheap_baselines`, `method_smoke`, `advanced_comparison` |
 | 配置管理 | [Hydra](https://hydra.cc/docs/intro/), `omegaconf` | 组合实验配置、命令行覆盖参数、避免脚本硬编码 | `data_sanity`, `method_smoke`, `advanced_comparison` |
 | LLM 微调/对齐/RL | [TRL](https://huggingface.co/docs/trl), [verl](https://verl.readthedocs.io/), [ms-swift](https://github.com/modelscope/ms-swift), [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory), [OpenRLHF](https://openrlhf.readthedocs.io/) | SFT、LoRA、DPO、PPO、GRPO、reward model、推理部署、评测和分布式 rollout；先选框架再写自定义代码 | `survey`, `method_design`, `method_smoke`, `advanced_comparison` |
+| 科学计算运行时 | ScholarAIO `toolref`/scientific skills, official docs, GROMACS, LAMMPS, OpenFOAM, Quantum ESPRESSO, bioinformatics CLIs | 用官方文档或本地 tool reference 查参数，记录版本/命令/输入/输出/验证，先 smoke 再长跑 | `data_sanity`, `cheap_baselines`, `method_design`, `method_smoke`, `advanced_comparison` |
 
 ## 最小安装组合
 
 如果只想把 PaperFactory 从“能写”升级到“能做可复现研究”，优先补这些：
 
 ```bash
-pip install arxiv habanero semanticscholar pypdf pdfminer.six mlflow dvc snakemake hydra-core omegaconf
+pip install arxiv habanero semanticscholar pypdf pdfminer.six markitdown bertopic mlflow dvc snakemake hydra-core omegaconf
 ```
 
 系统工具建议用系统包管理器或 conda/mamba 安装：
 
 ```bash
 # names vary by Linux distribution or conda channel
-pandoc latexmk biber poppler-utils git-lfs
+pandoc latexmk biber poppler-utils graphviz inkscape libreoffice git-lfs
 ```
 
 GROBID 更适合单独部署成本地服务，或者用 `grobid_client` 连接已有服务。没有 GROBID 时，PaperFactory 会退回 `pdftotext` 或 Python PDF 包，但需要在报告里标明解析质量风险。
@@ -36,8 +38,10 @@ GROBID 更适合单独部署成本地服务，或者用 `grobid_client` 连接�
 ## Codex 使用规则
 
 - `survey` 阶段优先使用 arXiv/OpenAlex/Crossref/Semantic Scholar 做文献发现和元数据交叉验证，原始 JSON/XML 缓存在 `.research/literature/api_cache/`。
+- 如果装有 ScholarAIO 或用户已有文献库，`survey` 阶段要用 `research-library-workflow` 建立任务级 workspace，并写 `.research/literature/library_workspace.md`，记录导入、检索、过滤、纳入/排除和访问日期。
 - LLM/Agent/RAG/RL 任务要先用 `llm-rl-toolkit` 写 `.research/llm_tooling/tool_decision.md`，说明为什么选择 TRL、verl、ms-swift、LLaMA-Factory、OpenRLHF 或其他成熟框架。
 - PDF 解析要记录工具、命令、输入文件和输出路径。GROBID 输出应保留 TEI/XML；`pdftotext` 输出应保留纯文本。
+- 科学计算任务要用 `scientific-runtime-tooling` 写 `.research/experiments/<phase>/runtime_provenance.md`。成功运行命令不等于科学结果可信，必须记录参数来源、官方文档或 toolref 来源、版本、验证标准和诊断限制。
 - 实验阶段优先把参数、指标、artifact 写入 MLflow；没有 MLflow 时必须写入 `.research/experiments/**/metrics.json` 和对应命令记录。
 - 大文件不直接塞进 Git。优先 DVC 或 git-lfs；没有这些工具时写 checksummed manifest。
 - 多步实验至少要有 Makefile 或 Snakemake 目标，避免只留下散乱命令。

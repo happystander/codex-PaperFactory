@@ -75,6 +75,7 @@ Survey and method-design artifacts have stricter contracts because they control 
 
 | File | Required Content |
 | --- | --- |
+| `literature/library_workspace.md` | Workspace or fallback library note: ScholarAIO/local-library workspace name when available, imports, search queries, filters, access dates, included/excluded paper counts, export path, and fallback method if no structured library tool is installed. |
 | `literature/paper_priority_scores.json` | Ranked papers with relevance, recency, citation signal, code availability, protocol closeness, baseline strength, total score, include/exclude decision, and reason. |
 | `literature/claim_extraction.json` | Structured extraction per paper: task, method, datasets, metrics, baselines, limitations, claims, source anchors, and code/checkpoint/data availability. |
 | `literature/code_interface_map.md` | Reference repository interface map: data entry, model entry, training command, evaluation command, config system, reusable modules, and incompatibilities. |
@@ -83,6 +84,14 @@ Survey and method-design artifacts have stricter contracts because they control 
 | `method/candidate_methods.json` | Multiple candidate methods with hypothesis, mechanism, expected win, implementation cost, required data, strongest overlap, falsifying ablation, and smoke-test feasibility. |
 | `method/idea_critic.md` | Skeptical reviewer pass that rejects weak candidates and explains repairs before implementation. |
 | `method/novelty_risk.json` | Hard gate with `novelty_risk_score`, `risk_level`, `overlap_types`, `missing_evidence`, `required_repairs`, and `pass_to_smoke`. `method_design` cannot advance unless `pass_to_smoke` is true, score is at most `0.5`, and blocking overlap types are absent. |
+
+Scientific-runtime artifacts are required whenever the phase depends on external scientific CLI tools, simulations, or domain runtimes:
+
+| File | Required Content |
+| --- | --- |
+| `experiments/<phase>/runtime_provenance.md` | Tool name, version, binary path, official docs or toolref source, scientific parameters, input files, command, hardware/runtime notes, output paths, validation checks, and limitations. |
+| `experiments/<phase>/commands.sh` | Rerunnable command sequence or a pointer to the Makefile/Snakemake target. |
+| `experiments/<phase>/failure_notes.md` | Failed or scientifically invalid runs that explain why a result cannot be used as evidence. |
 
 Every phase should run an internal loop before setting `status: complete`: execute, self-check, repair, evidence-check, write the report, and choose the route. Record that loop in `report.self_check`.
 
@@ -93,6 +102,8 @@ Core artifact rules:
 - Use real experiment scripts and raw outputs for metrics.
 - Keep proxy experiments clearly labeled as proxy.
 - Save failed runs and negative results.
+- For ScholarAIO/library-backed research, keep the workspace/export provenance that produced the reading list and BibTeX.
+- For scientific CLI/simulation runs, keep runtime provenance before interpreting outputs as evidence.
 - Do not overwrite raw outputs when summarizing.
 - Do not delete raw outputs, source data, configs, logs, references, or files required to reproduce a result during cleanup.
 - Store paper claims only after the supporting artifact exists.

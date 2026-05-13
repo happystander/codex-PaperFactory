@@ -7,6 +7,7 @@ This repository was iterated after scanning local `lyq` user skill inventories u
 - `/home/lyq/.claude/plugins`
 - `/data3/lyq/workspace/codex_workspace/auto_research/generative_rec_agent_research/external`
 - `/data3/lyq/workspace/codex_workspace/auto_research/KLC论文写作自查.pdf`
+- `ZimoLiao/scholaraio`
 
 The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (frontend, cloud, mobile, payments, service APIs). PaperFactory integrates the writing-relevant ideas as concise plugin-local skills rather than copying large third-party skill bodies.
 
@@ -15,9 +16,11 @@ The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (f
 | PaperFactory skill | Local sources condensed | Purpose |
 | --- | --- | --- |
 | `paper-reader` | `nature-reader`, `huggingface-papers`, `auto-research` | Source-grounded paper reading and baseline extraction |
+| `research-library-workflow` | `ZimoLiao/scholaraio` skills: `search`, `workspace`, `ingest`, `import`, `show`, `topics`, `graph`, `citation-check`, `academic-writing`, `patent-search`, `webextract` | Structured paper-library workspaces, citation graph/topic analysis, ScholarAIO/Zotero/EndNote-style ingestion, prior-art expansion, and citation validation |
 | `llm-rl-toolkit` | `chengyuZou/Open-LLM`, official TRL/verl/ms-swift/LLaMA-Factory/OpenRLHF docs | LLM/Agent/RAG/RL resource routing and mature framework selection before custom infrastructure |
 | `citation-workflow` | `bib-search-citation`, `nature-citation`, `zotero`, `huggingface-papers` | Citation search, support grading, BibTeX/Typst/LaTeX snippets |
 | `scientific-figure` | `plot`, `nature-figure`, conference writing rules | Figure contracts, source-data manifests, export QA |
+| `scientific-runtime-tooling` | `ZimoLiao/scholaraio` skills: `scientific-runtime`, `scientific-tool-onboarding`, `gromacs`, `lammps`, `openfoam`, `quantum-espresso`, `bioinformatics` | Official-doc/toolref-first scientific CLI use, runtime provenance, smoke validation, and domain-parameter safety |
 | `drawio-academic-skills` | `bahayonghang/drawio-skills` | Editable Draw.io bundles for paper architecture, workflow, roadmap, and method diagrams |
 | `best-paper-writing-reference` | Curated CCF-A/top AI award-paper references | Experiment design and paper-writing structure patterns from ICLR, NeurIPS/NIPS, ICML, ACL, and AAAI |
 | `conference-paper-writing` | existing project `conference-paper-writing`, academic writing skills, generic rules from `generative_rec_agent_research/skills/conference-paper-writing` | Claims-to-evidence drafting for ML/AI papers |
@@ -38,7 +41,7 @@ The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (f
 ## Deliberately Not Integrated
 
 - Product/API/platform skills unrelated to academic writing.
-- Domain-specific life-science database skills, because PaperFactory should stay field-agnostic.
+- Domain-specific life-science database skills as standalone PaperFactory skills. The generic scientific-runtime protocol was integrated, but narrow database/tool manuals remain external unless a task needs them.
 - Most of `generative_rec_agent_research/skills/mllm-user-sim-rec`, because it is a project memory for MLLM recommender research. Only generic writing discipline already present in PaperFactory was retained: no drafting before evidence gates, identical-protocol comparisons, strong baseline coverage, negative-result scoping, and claim-safe appendix strategy.
 - External scripts that are not writing-critical. The `latex-paper-skills` writing engine is installed as a sibling skill bundle instead of being vendored wholesale into this repository.
 
@@ -49,9 +52,11 @@ The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (f
 - `scripts/manuscript_check.py`: now also flags KLC-style mechanical issues such as smart quotes, malformed `i.e.,`/`e.g.,`, breakable LaTeX references, raw `resizebox`, loose `itemize`, arXiv-preprint bibliography entries, and noisy `booktitle` fields.
 - `scripts/make_metric_plot.py`: simple metric plotting with paper-style exports.
 - `scripts/fetch_best_paper_references.py`: downloads curated award-paper PDFs and arXiv source bundles into the ignored local cache `reference_papers/cache/`.
+- `research-library-workflow`: condenses ScholarAIO's search, ingest, workspace, guided reading, topic/citation graph, export, and citation-check skills into a PaperFactory literature evidence protocol.
+- `scientific-runtime-tooling`: condenses ScholarAIO's scientific runtime and tool-onboarding skills into a provenance-first protocol for GROMACS/LAMMPS/OpenFOAM/Quantum ESPRESSO/bioinformatics-style work.
 - `llm-rl-toolkit`: summarizes Open-LLM into a task map and adds a framework selector for TRL, verl, ms-swift, LLaMA-Factory, and OpenRLHF.
 - `paperfactory doctor`: checks whether the external `latex-paper-skills` bundle and its `_shared` runtime helpers are installed.
-- `paperfactory doctor`: also reports optional open research tools for literature APIs, PDF extraction, LaTeX builds, experiment tracking, workflow orchestration, and artifact versioning.
+- `paperfactory doctor`: also reports optional open research tools for ScholarAIO libraries, Office/PDF extraction, diagram conversion, LaTeX builds, experiment tracking, workflow orchestration, LLM/RL frameworks, and artifact versioning.
 - `docs/open-research-tooling.md`: maps open-source research tools to PaperFactory phases and defines fallback rules when optional tools are unavailable.
 - `drawio-academic-skills`: installed as an external sibling skill; PaperFactory checks for its CLI and asks Codex to preserve editable diagram bundles.
 

@@ -658,8 +658,10 @@ def command_doctor(args: argparse.Namespace) -> int:
         "paper-format-self-check",
         "paper-reader",
         "presentation-deck",
+        "research-library-workflow",
         "reviewer-response",
         "scientific-figure",
+        "scientific-runtime-tooling",
     )
     for skill_name in local_skill_names:
         skill_file = ROOT / "skills" / skill_name / "SKILL.md"
@@ -726,12 +728,16 @@ def command_doctor(args: argparse.Namespace) -> int:
     )
 
     research_binaries = (
+        ("tool:library:scholaraio", "scholaraio", "structured paper search, workspaces, citation checks, and scientific tool references"),
         ("tool:paper:pandoc", "pandoc", "Markdown/LaTeX/DOCX conversion"),
+        ("tool:paper:libreoffice", "libreoffice", "Office document export and inspection"),
         ("tool:paper:latexmk", "latexmk", "repeatable LaTeX builds"),
         ("tool:paper:pdflatex", "pdflatex", "fallback PDF compilation"),
         ("tool:paper:tectonic", "tectonic", "self-contained LaTeX builds"),
         ("tool:paper:biber", "biber", "BibLaTeX bibliography builds"),
         ("tool:paper:bibtex", "bibtex", "BibTeX bibliography builds"),
+        ("tool:diagram:dot", "dot", "Graphviz diagram rendering"),
+        ("tool:diagram:inkscape", "inkscape", "SVG/PDF figure conversion and inspection"),
         ("tool:pdf:pdftotext", "pdftotext", "fast local PDF text extraction"),
         ("tool:pdf:grobid", "grobid_client", "structured scholarly PDF extraction"),
         ("tool:pdf:java", "java", "running GROBID or Java PDF tooling"),
@@ -750,8 +756,10 @@ def command_doctor(args: argparse.Namespace) -> int:
         ("pkg:lit:arxiv", "arxiv", "arXiv API search helpers", "arxiv"),
         ("pkg:lit:habanero", "habanero", "Crossref API helpers", "habanero"),
         ("pkg:lit:semantic", "semanticscholar", "Semantic Scholar API helpers", "semanticscholar"),
+        ("pkg:doc:markitdown", "markitdown", "Office/document-to-Markdown conversion", "markitdown"),
         ("pkg:pdf:pypdf", "pypdf", "fallback PDF metadata/text extraction", "pypdf"),
         ("pkg:pdf:pdfminer", "pdfminer", "fallback PDF layout/text extraction", "pdfminer.six"),
+        ("pkg:topic:bertopic", "bertopic", "topic clustering for literature workspaces", "bertopic"),
         ("pkg:config:hydra", "hydra", "composable experiment configuration", "hydra-core"),
         ("pkg:config:omegaconf", "omegaconf", "typed experiment configuration", "omegaconf"),
         ("pkg:llm:trl", "trl", "Hugging Face post-training trainers", "trl"),

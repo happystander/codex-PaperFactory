@@ -47,12 +47,12 @@ For each work cycle:
 The default pipeline is:
 
 - `scope`: precise target, exclusions, venue/domain, datasets, metrics, compute assumptions, success criteria.
-- `survey`: recent papers, official code, paper priority scoring, structured claim extraction, datasets, leaderboards, baseline matrix, code interface map, novelty gap; use `paper-reader`, `citation-workflow`, and `llm-rl-toolkit` for LLM/Agent/RAG/RL tasks when useful.
-- `data_sanity`: real dataset or explicitly marked proxy, split checks, leakage risks, metric protocol.
+- `survey`: recent papers, official code, paper priority scoring, structured claim extraction, datasets, leaderboards, baseline matrix, code interface map, novelty gap; use `research-library-workflow`, `paper-reader`, `citation-workflow`, and `llm-rl-toolkit` for LLM/Agent/RAG/RL tasks when useful.
+- `data_sanity`: real dataset or explicitly marked proxy, split checks, leakage risks, metric protocol; use `scientific-runtime-tooling` when datasets depend on scientific software, simulation inputs, or domain reference databases.
 - `cheap_baselines`: baseline code probe under the exact target protocol; inspect reference implementations, run minimal checks, record diagnostic/reference metrics, and decide which baselines need later full reproduction. The key is legacy and does not require the baseline to be cheap.
 - `method_design`: gap-driven method with nearest-prior module diff, candidate idea generation, critic rejection pass, novelty risk score, falsifiable ablations, and staged escalation plan.
-- `method_smoke`: minimal method implementation and smoke test, with failure diagnosis and diagnostic comparison against baseline-probe/reference metrics.
-- `advanced_comparison`: released checkpoints or fair reproduction of strong baselines after the method shows a credible signal.
+- `method_smoke`: minimal method implementation and smoke test, with failure diagnosis, runtime provenance when scientific tools are involved, and diagnostic comparison against baseline-probe/reference metrics.
+- `advanced_comparison`: released checkpoints or fair reproduction of strong baselines after the method shows a credible signal; scientific-runtime comparisons need official-doc/toolref provenance and protocol-matched validation.
 - `paper_evidence`: main results, ablations, robustness, failure cases, statistics, compute details, and paper-ready figure/source-data plans.
 - `paper_drafting`: paper, appendix, and availability statements written from evidence only, using `conference-paper-writing`, `academic-polishing`, `citation-workflow`, and `data-availability`.
 - `internal_review`: adversarial review of novelty, evidence, reproducibility, and overclaiming, using `manuscript-audit`.
@@ -102,7 +102,9 @@ Use these plugin-local skills when their phases are reached:
 - `conference-page-budget`: during `paper_drafting`, choose 8-page double-column, 9-page single-column, or appendix layout and allocate section/page budget.
 - `best-paper-writing-reference`: during `method_design`, `paper_evidence`, and `paper_drafting`, compare experiment and writing plans against curated award-paper structures.
 - `paper-reader`: during `survey`, build source-grounded reading notes and baseline facts.
+- `research-library-workflow`: during `survey`, `paper_evidence`, `paper_drafting`, and `internal_review`, use structured literature workspaces, ScholarAIO/Zotero/EndNote-style ingestion, topic/citation graph checks, and citation validation.
 - `llm-rl-toolkit`: during LLM/Agent/RAG/RL `survey`, `method_design`, `method_smoke`, and `advanced_comparison`, choose Open-LLM resources and mature TRL/verl/ms-swift/LLaMA-Factory/OpenRLHF-style frameworks before custom infrastructure.
+- `scientific-runtime-tooling`: during `data_sanity`, `cheap_baselines`, `method_design`, `method_smoke`, `advanced_comparison`, and scientific `paper_evidence`, use official docs or local tool references, record runtime provenance, and avoid guessing domain parameters.
 - `citation-workflow`: during `survey`, `paper_evidence`, and `paper_drafting`, map claims to citation support.
 - `data-availability`: during `paper_evidence` and `paper_drafting`, prepare source-data/code/model availability.
 - `academic-polishing`: during `paper_drafting`, improve prose without changing claims.

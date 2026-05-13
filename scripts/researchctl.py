@@ -61,6 +61,7 @@ PHASES: tuple[Phase, ...] = (
         objective="Build a primary-source survey and identify the closest reproducible baselines.",
         required=(
             "literature/reading_list.md",
+            "literature/library_workspace.md",
             "literature/paper_priority_scores.json",
             "literature/claim_extraction.json",
             "literature/baseline_matrix.md",
@@ -72,7 +73,7 @@ PHASES: tuple[Phase, ...] = (
         gate="Survey covers recent papers, official repositories, scored paper priority, structured claim extraction, 5-8 inspected reference codebases with interface maps, datasets, leaderboards, checkpoint availability, protocol details, reproduction cost, and fairness risks.",
         prompt_focus=(
             "Search broadly using primary sources and verify recent or unstable facts.",
-            "Use paper-reader for source-grounded paper notes and citation-workflow for local bibliography/citation mapping.",
+            "Use research-library-workflow, paper-reader, and citation-workflow for source-grounded paper workspaces, paper notes, citation graph checks, and local bibliography/citation mapping.",
             "Score candidate papers in literature/paper_priority_scores.json by relevance, recency, citation signal, code availability, protocol closeness, and baseline strength; explain why top papers were included or excluded.",
             "Extract task, method, dataset, metric, baseline, limitation, code/checkpoint/data availability, and paper claims into literature/claim_extraction.json with source anchors for every inspected paper.",
             "Run an AI-Researcher-style Prepare step: select 5-8 reference codebases by relevance, recency, reproducibility, readability, and implementation coverage.",
@@ -93,6 +94,7 @@ PHASES: tuple[Phase, ...] = (
             "Write a benchmark profile: dataset, baseline candidates, comparison targets, evaluation metrics, and domain-specific constraints.",
             "Write exact split and metric protocol.",
             "Flag proxy data clearly and do not let it redefine the research target.",
+            "For scientific-computing datasets or domain tools, use scientific-runtime-tooling to record reference versions, official documentation sources, and validation constraints.",
         ),
     ),
     Phase(
@@ -109,6 +111,7 @@ PHASES: tuple[Phase, ...] = (
             "Inspect baseline/reference repositories as code maps: data entry, model entry, training command, evaluation command, configs, checkpoint availability, GPU requirements, and reusable modules.",
             "Run only the smallest meaningful smoke check needed to verify installation, data format, evaluation protocol, and metric extraction.",
             "Use the same split, candidate set, metrics, and inference constraints planned for the method when a diagnostic run is possible.",
+            "For scientific tools or simulation baselines, use scientific-runtime-tooling and write runtime provenance even for diagnostic probes.",
             "Write diagnostic metrics or known published/reference metrics to experiments/cheap_baselines/metrics.json, clearly marking whether each number is diagnostic, released-checkpoint, reported-paper, or reproduced.",
             "Record which baselines should be fully reproduced after the method shows a signal.",
         ),
@@ -138,6 +141,7 @@ PHASES: tuple[Phase, ...] = (
             "Break the innovation into atomic academic definitions; for each record math, paper trace, code trace, implementation hook, and falsifying ablation.",
             "Write a concrete implementation plan covering data processing, model, training, testing, commands, expected outputs, and low-budget smoke settings.",
             "Do not directly import reference repositories into the final method; adapt the ideas into self-contained code with attribution notes. For LLM training/RL infrastructure, prefer a small adapter/config around TRL, verl, ms-swift, LLaMA-Factory, or OpenRLHF over custom trainer code.",
+            "For methods that depend on scientific software, official tool parameters, or simulations, use scientific-runtime-tooling and do not advance if the core validation criteria cannot be sourced.",
             "Design a lightweight first version and a clear escalation path.",
             "Specify ablations and failure criteria before running expensive experiments.",
         ),
@@ -158,6 +162,7 @@ PHASES: tuple[Phase, ...] = (
             "When building method code, keep a clear data/model/training/testing/data_processing/run_training_testing.py-style structure unless the project already has a stronger established layout.",
             "Run a very small first experiment, such as a two-epoch or otherwise low-budget smoke run, before longer training.",
             "Run a small experiment with saved command, config, outputs, and metrics; compare against baseline-probe metrics when available and mark the comparison as diagnostic.",
+            "For scientific CLI or simulation runs, write experiments/method_smoke/runtime_provenance.md with tool version, docs source, parameters, command, output paths, and validation checks.",
             "If it fails, preserve the failure and propose a concrete repair rather than hiding it.",
         ),
     ),
@@ -176,6 +181,7 @@ PHASES: tuple[Phase, ...] = (
             "Run a judge/refinement pass before escalation: audit implementation against atomic concepts, protocol, and reference codebases, then save the repair or refinement plan.",
             "Select the key baselines to reproduce based on the method's diagnostic results and the survey's closest-prior matrix.",
             "Prefer released checkpoints and official evaluation code when possible.",
+            "For scientific or domain-runtime comparisons, require official docs/toolref provenance and protocol-matched validation before treating results as final evidence.",
             "Retrain baselines only when checkpoints are unavailable, protocol-incompatible, or final claims require a matched training budget.",
             "After each advanced run, analyze why the result changed and whether the next experiment is justified.",
             "Mark any non-identical comparison as diagnostic instead of final.",
@@ -227,6 +233,7 @@ PHASES: tuple[Phase, ...] = (
             "Use the conference-paper-writing skill to build a claim-to-evidence map before prose.",
             "Use conference-page-budget before drafting main prose: choose 8p-double, 9p-single, or appendix mode; write paper/page_budget.md; map main-vs-appendix content.",
             "Use latex-paper-skills when available: paper-from-zero for routing, empirical-paper-writer for experimental papers, arxiv-paper-writer for review papers, results-backfill for verified result upgrades, and latex-rhythm-refiner after content stabilizes.",
+            "Use research-library-workflow to run a final citation-support pass against the same workspace used for survey.",
             "Create an issues-style writing contract in paper/writing_issues.csv; track section tasks, dependencies, citation verification, evidence status, and placeholder/result status.",
             "Use citation-workflow for citation support checks, data-availability for availability wording, and academic-polishing for final language passes.",
             "Draft section-by-section with checkpoints: methodology, related work, experiments, introduction, conclusion, then abstract.",
@@ -257,6 +264,7 @@ PHASES: tuple[Phase, ...] = (
             "Use latex-paper-skills QA where available: issue_workflow audit, citation_policy audit-bib/audit-tex, source_ranker, style_profile, compile_paper, and record results in paper/latex_qa.md.",
             "Use paper-format-self-check for KLC-style final source/PDF hygiene: quotes, i.e./e.g., BibTeX venue cleanup, published-version citations, nonbreaking references, figure/table readability, appendix navigation, list spacing, and cropping.",
             "Run latex-rhythm-refiner only after claim support, citations, and numbers are stable; preserve citation positions and verified numeric claims.",
+            "Use research-library-workflow to classify citations as verified, ambiguous, missing, or unsupported before camera-ready checks.",
             "Check whether a stronger baseline would invalidate the main claim.",
             "If blockers remain, set report status to needs_more_work and route back manually in the summary.",
         ),
@@ -857,10 +865,14 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     focus_list = "\n".join(f"- {item}" for item in phase.prompt_focus)
     controller_cmd = f"python {shell_quote(controller)}"
     companion_skills = []
-    if phase.key in {"survey", "data_sanity", "method_design", "method_smoke", "advanced_comparison"}:
+    if phase.key in {"survey", "data_sanity", "cheap_baselines", "method_design", "method_smoke", "advanced_comparison"}:
         companion_skills.append("auto-research")
-    if phase.key in {"survey", "method_design", "method_smoke", "advanced_comparison"}:
+    if phase.key in {"survey", "cheap_baselines", "method_design", "method_smoke", "advanced_comparison"}:
         companion_skills.append("llm-rl-toolkit")
+    if phase.key in {"survey", "paper_evidence", "paper_drafting", "internal_review"}:
+        companion_skills.append("research-library-workflow")
+    if phase.key in {"data_sanity", "cheap_baselines", "method_design", "method_smoke", "advanced_comparison", "paper_evidence"}:
+        companion_skills.append("scientific-runtime-tooling")
     if phase.key in {"method_design", "paper_evidence", "paper_drafting", "internal_review"}:
         companion_skills.append("best-paper-writing-reference")
     if phase.key == "survey":
@@ -896,6 +908,7 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
                 "data-availability",
             ]
         )
+    companion_skills = list(dict.fromkeys(companion_skills))
     companion_text = (
         "\nCompanion skills to apply this phase:\n" + "\n".join(f"- {skill}" for skill in companion_skills)
         if companion_skills
@@ -904,6 +917,7 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     open_tool_guidance_by_phase = {
         "survey": (
             "Use OpenAlex, Crossref, arXiv, and Semantic Scholar APIs when useful for source discovery, DOI/arXiv metadata, citation trails, and related-work expansion.",
+            "If ScholarAIO is installed or the user has a local paper library, apply research-library-workflow to build a task workspace, then write .research/literature/library_workspace.md with imports, queries, filters, access dates, and included/excluded paper counts.",
             "Cache raw API responses under .research/literature/api_cache/ and cite the exact query, date, and source.",
             "For PDFs, prefer GROBID for structured TEI extraction when available; otherwise use pdftotext or Python PDF packages and record the extraction method.",
             "If the task involves LLMs, Agents, RAG, fine-tuning, or RL, use llm-rl-toolkit to seed framework candidates from Open-LLM and write .research/llm_tooling/tool_decision.md before custom infrastructure.",
@@ -911,19 +925,23 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
         "data_sanity": (
             "Use DVC or git-lfs for large data/model artifacts when available; otherwise write a manifest with checksums, source URLs, and access constraints.",
             "Use Hydra/OmegaConf-style config files or a small equivalent config format so dataset, split, and metric choices are reproducible.",
+            "For scientific-computing data or domain runtimes, apply scientific-runtime-tooling: record reference/database versions, official docs source, binary version, and validation constraints before experiments.",
         ),
         "method_design": (
             "For LLM, Agent, RAG, fine-tuning, or RL methods, apply llm-rl-toolkit before inventing infrastructure; update .research/llm_tooling/tool_decision.md if the selected framework changes.",
             "Treat baseline code probes as interface and metric context, not as final fairness evidence unless the metrics are explicitly reproduced under the target protocol.",
+            "For simulation or scientific-tool methods, apply scientific-runtime-tooling and reject designs whose key parameters, solver choices, or validation criteria cannot be sourced from papers or official docs.",
         ),
         "cheap_baselines": (
             "Track baseline code-probe parameters, commands, diagnostic metrics, published/reference metrics, GPU requirements, and output artifacts with MLflow when available, or save the same fields in JSON/CSV under .research/experiments/.",
             "Prefer Makefile or Snakemake targets for rerunnable baseline probes when the setup has more than one step.",
+            "For scientific or domain-tool baselines, write runtime provenance with tool version, docs source, parameters, command, output paths, and validation checks.",
             "Do not downgrade GPU-trained baselines to weak CPU substitutes as if they were fair comparisons; mark such runs diagnostic and defer full reproduction until advanced_comparison.",
         ),
         "method_smoke": (
             "Use MLflow for smoke-run parameters, metrics, checkpoints, and notes when available.",
             "Use Hydra/OmegaConf-style configs and a Makefile or Snakemake target for the smallest rerunnable method path.",
+            "For scientific CLI or simulation runs, use scientific-runtime-tooling and save .research/experiments/method_smoke/runtime_provenance.md before interpreting the result.",
             "For LLM fine-tuning or RL smoke tests, prefer TRL, verl, ms-swift, LLaMA-Factory, or OpenRLHF examples/configs before writing trainer code.",
         ),
         "advanced_comparison": (
@@ -931,6 +949,7 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
             "Use DVC/git-lfs or checksummed manifests for large checkpoints and result artifacts.",
             "Use Snakemake or Makefile targets for multi-step fair-comparison pipelines.",
             "For LLM comparisons, keep the selected framework, version, official example/config provenance, reward code, dataset format, and evaluation harness in the evidence registry.",
+            "For scientific-runtime comparisons, treat reduced-size, changed-parameter, CPU-only, or proxy-input runs as diagnostic unless protocol equivalence is justified.",
             "When designing final comparison evidence, inspect the curated award-paper references for baseline tiers, ablation structure, and failure-boundary reporting.",
         ),
         "paper_evidence": (
@@ -941,10 +960,12 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
         "paper_drafting": (
             "Compile with latexmk, pdflatex, biber, bibtex, tectonic, or pandoc when available; save build commands and failure logs in paper/latex_qa.md.",
             "Use Crossref/arXiv/OpenAlex metadata checks for uncertain bibliography entries rather than inventing fields.",
+            "Use research-library-workflow or an equivalent citation check to verify that each cited paper supports the sentence using it.",
             "Use curated award-paper references for structure and page-budget decisions; summarize patterns, do not copy text.",
         ),
         "internal_review": (
             "Re-run available LaTeX/BibTeX build tools and citation metadata checks before final review.",
+            "Use research-library-workflow to classify citations as verified, ambiguous, missing, or unsupported, then repair unsupported paper claims before approval.",
             "Audit whether experiment tracking, data versioning, and workflow commands are sufficient for another researcher to reproduce the claims.",
             "Compare the draft against curated award-paper standards for experiment coverage, limitations, appendix strategy, and figure/table readability.",
         ),

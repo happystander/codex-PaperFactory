@@ -118,8 +118,9 @@ ssh -L 8765:127.0.0.1:8765 user@server
 | Node.js | 推荐 | Draw.io 学术图表 skill CLI。 | `node --version` |
 | LaTeX 工具链 | 可选 | 编译生成的 LaTeX 论文。 | `latexmk --version` |
 | matplotlib | 可选 | `paperfactory plot` 绘图。 | `python3 -m pip install matplotlib` |
-| 文献/PDF 工具 | 推荐 | arXiv/Crossref/Semantic Scholar、PDF 解析。 | `./paperfactory doctor` |
+| 文献/PDF 工具 | 推荐 | ScholarAIO workspace、arXiv/Crossref/Semantic Scholar、PDF/Office 解析、topic/citation graph。 | `./paperfactory doctor` |
 | 实验工具 | 推荐 | MLflow、DVC、git-lfs、Snakemake、Hydra。 | [`docs/open-research-tooling.md`](docs/open-research-tooling.md) |
+| 科学运行时工具 | 按任务需要 | GROMACS、LAMMPS、OpenFOAM、Quantum ESPRESSO、生信 CLI 等官方文档优先运行。 | `./paperfactory doctor` |
 | LLM/RL 框架 | 按任务需要 | TRL、verl、ms-swift 等。 | `./paperfactory doctor` |
 | 写作/绘图 skills | 推荐 | 论文写作、结果回填、节奏润色、Draw.io 图表。 | `./paperfactory doctor` |
 
@@ -266,10 +267,12 @@ paperfactory web --open
 | Skill | 作用 |
 | --- | --- |
 | `autonomous-research` | 长期科研流程和实验门禁。 |
+| `research-library-workflow` | ScholarAIO 风格文献库、workspace、topic/citation graph、引用核查。 |
 | `paper-reader` | 有来源锚点的论文笔记和 baseline 事实。 |
 | `llm-rl-toolkit` | Open-LLM 资源导航和 LLM/RL 框架选型。 |
 | `citation-workflow` | 引用搜索、claim 支撑映射、BibTeX/LaTeX 片段。 |
 | `scientific-figure` | 图表规划、source-data manifest、绘图 QA。 |
+| `scientific-runtime-tooling` | 科学计算 CLI/仿真工具的官方文档优先、runtime provenance 和 smoke validation。 |
 | `drawio-academic-skills` | 可编辑的方法图、流程图、架构图 bundle。 |
 | `best-paper-writing-reference` | ICLR/NeurIPS/ICML/ACL/AAAI 获奖论文参考库。 |
 | `conference-paper-writing` | 基于证据的会议论文写作。 |
@@ -289,7 +292,7 @@ paperfactory web --open
 | [`docs/ai-researcher-adaptation.md`](docs/ai-researcher-adaptation.md) | AI-Researcher 工作流吸收说明。 |
 | [`docs/latex-paper-skills-adaptation.md`](docs/latex-paper-skills-adaptation.md) | LaTeX 写作 skills 集成。 |
 | [`docs/drawio-figure-integration.md`](docs/drawio-figure-integration.md) | Draw.io 图表 bundle 集成。 |
-| [`docs/open-research-tooling.md`](docs/open-research-tooling.md) | 文献发现、PDF 解析、实验追踪、工作流复现和论文构建工具。 |
+| [`docs/open-research-tooling.md`](docs/open-research-tooling.md) | ScholarAIO 文献库、PDF/Office 解析、科学运行时、实验追踪、工作流复现和论文构建工具。 |
 | [`docs/refactor-roadmap.md`](docs/refactor-roadmap.md) | 工程化重构路线。 |
 
 ### 常见问题
@@ -417,8 +420,9 @@ ln -s "$(pwd)/paperfactory" ~/.local/bin/paperfactory
 | Node.js | Recommended | Draw.io academic diagram skill CLI. | `node --version` |
 | LaTeX toolchain | Optional | Compile generated papers. | `latexmk --version` |
 | matplotlib | Optional | `paperfactory plot`. | `python3 -m pip install matplotlib` |
-| Literature/PDF tools | Recommended | APIs and PDF extraction. | `./paperfactory doctor` |
+| Literature/PDF tools | Recommended | ScholarAIO workspaces, literature APIs, PDF/Office extraction, topic/citation graphs. | `./paperfactory doctor` |
 | Experiment tools | Recommended | MLflow, DVC, git-lfs, Snakemake, Hydra. | [`docs/open-research-tooling.md`](docs/open-research-tooling.md) |
+| Scientific runtime tools | Task dependent | Official-doc-first GROMACS, LAMMPS, OpenFOAM, Quantum ESPRESSO, bioinformatics CLIs, and similar tools. | `./paperfactory doctor` |
 | LLM/RL frameworks | Task dependent | TRL, verl, ms-swift, etc. | `./paperfactory doctor` |
 | Writing/figure skills | Recommended | Paper writing, result backfill, prose refinement, Draw.io figures. | `./paperfactory doctor` |
 
@@ -541,6 +545,18 @@ paperfactory web --open
   archive/cleanup/
 ```
 
+### Integrated Skills
+
+| Skill | Purpose |
+| --- | --- |
+| `autonomous-research` | Long-horizon research workflow and phase gates. |
+| `research-library-workflow` | ScholarAIO-style paper library workspaces, topic/citation graph checks, ingestion, and citation validation. |
+| `scientific-runtime-tooling` | Official-doc/toolref-first scientific CLI and simulation provenance, smoke validation, and parameter safety. |
+| `llm-rl-toolkit` | Open-LLM resource routing and LLM/RL framework selection. |
+| `scientific-figure`, `drawio-academic-skills` | Paper figures, source-data manifests, and editable architecture/workflow diagrams. |
+| `conference-paper-writing`, `conference-page-budget`, `latex-typst-paper`, `paper-format-self-check` | Evidence-safe conference writing, page budgets, source checks, and final format QA. |
+| `manuscript-audit` | Top-conference-style internal review. |
+
 ### Documentation
 
 | Document | Purpose |
@@ -549,7 +565,7 @@ paperfactory web --open
 | [`docs/local-ui.md`](docs/local-ui.md) | Web UI and dashboard details. |
 | [`docs/artifact-contract.md`](docs/artifact-contract.md) | Phase report and artifact contracts. |
 | [`docs/ai-researcher-adaptation.md`](docs/ai-researcher-adaptation.md) | AI-Researcher-inspired workflow adaptation. |
-| [`docs/open-research-tooling.md`](docs/open-research-tooling.md) | Optional research tooling. |
+| [`docs/open-research-tooling.md`](docs/open-research-tooling.md) | ScholarAIO-style libraries, PDF/Office parsing, scientific runtimes, and optional research tooling. |
 | [`docs/refactor-roadmap.md`](docs/refactor-roadmap.md) | Engineering refactor roadmap. |
 
 ### Safety Rules

@@ -83,12 +83,12 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 默认阶段如下：
 
 1. `scope`: 明确研究问题、排除范围、数据集、指标、算力、成功标准。
-2. `survey`: 查近期论文、官方代码、数据集、排行榜，建立论文优先级评分、claim extraction、代码接口图、baseline matrix、相关 LLM/RL 工具候选和 novelty gap。
-3. `data_sanity`: 检查真实数据、切分、标签、泄漏风险和指标协议。
+2. `survey`: 查近期论文、官方代码、数据集、排行榜，建立 ScholarAIO 风格任务级文献 workspace、论文优先级评分、claim extraction、代码接口图、baseline matrix、相关 LLM/RL 工具候选和 novelty gap。
+3. `data_sanity`: 检查真实数据、切分、标签、泄漏风险和指标协议；科学计算任务还要记录参考数据库、工具版本和验证约束。
 4. `cheap_baselines`: Baseline 代码探查，检查参考实现、跑最小协议验证、记录诊断/参考指标，并决定哪些 baseline 需要在方法有信号后完整复现。这个 key 为兼容保留，不代表 baseline 必须 cheap。
 5. `method_design`: 基于 nearest-prior diff、候选方法生成、critic 审查和 novelty risk gate 设计方法；如果只是调参、浅组合或没有可证伪消融，不能进入 smoke test。
-6. `method_smoke`: 最小方法路径烟测，并和 baseline 探查指标或参考指标做诊断比较。
-7. `advanced_comparison`: 方法出现可信信号后，再公平复现或评估强 baseline/官方 checkpoint。
+6. `method_smoke`: 最小方法路径烟测，并和 baseline 探查指标或参考指标做诊断比较；涉及科学 CLI/仿真时写 runtime provenance。
+7. `advanced_comparison`: 方法出现可信信号后，再公平复现或评估强 baseline/官方 checkpoint；科学运行时比较必须有官方文档或 toolref provenance。
 8. `paper_evidence`: 整理主结果、消融、鲁棒性、失败边界、复现信息，并用 `scientific-figure` 规划论文图，用 `drawio-academic-skills` 生成可编辑结构图 bundle 和 source-data manifest。
 9. `paper_drafting`: 只基于已有证据写论文和 appendix，同时生成写作 issue 合同、LaTeX/BibTeX 源文件，并用 `conference-paper-writing` 与 `latex-paper-skills` 控制论文表达。
 10. `internal_review`: 以审稿人视角检查创新性、证据、公平性、复现性、LaTeX QA 和 KLC 风格最终格式自查。
@@ -114,10 +114,12 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 
 控制器只接受有效阶段名。`repeat` 会重做当前阶段，`jump_back` 会回到前序阶段，`skip_next` 会跳过紧邻的下一阶段，`jump_to` 会跳到指定阶段。
 
-## 科研绘图与论文写作
+## 科研工具、绘图与论文写作
 
 - `scientific-figure`: 在 `paper_evidence` 阶段规划论文图、source data、caption 和导出格式。
 - `drawio-academic-skills`: 来自 `drawio-skills`，用于论文架构图、流程图、roadmap、方法图，默认保留 `.drawio + .spec.yaml + .arch.json + .svg` 可编辑 bundle。
+- `research-library-workflow`: 来自 ScholarAIO 的文献 search/workspace/ingest/show/topics/graph/citation-check 思路，用于建立任务级文献库、nearest prior、research gap 和引用核查。
+- `scientific-runtime-tooling`: 来自 ScholarAIO 的 scientific-runtime/tool-onboarding 思路，用于 GROMACS、LAMMPS、OpenFOAM、Quantum ESPRESSO、生信 CLI 等科学工具的版本、参数来源、命令和验证记录。
 - `llm-rl-toolkit`: 把 Open-LLM 总结成可执行资源地图，并在 LLM 微调、偏好优化、RLHF/GRPO、Agent/RAG 和评测任务里优先选择 TRL、verl、ms-swift、LLaMA-Factory、OpenRLHF 等成熟框架。
 - `best-paper-writing-reference`: 准备 ICLR、NeurIPS、ICML、ACL、AAAI 获奖论文 PDF/LaTeX 缓存，用于参考实验设计、结构、图表、限制和附录策略。
 - `conference-paper-writing`: 在 `paper_drafting` 和 `internal_review` 阶段把证据转成会议论文表述、表格、限制和复现说明。
