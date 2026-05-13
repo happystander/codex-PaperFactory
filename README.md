@@ -314,6 +314,7 @@ paperfactory web --open
 | [`docs/latex-paper-skills-adaptation.md`](docs/latex-paper-skills-adaptation.md) | LaTeX writing skill integration. |
 | [`docs/drawio-figure-integration.md`](docs/drawio-figure-integration.md) | Draw.io figure bundle integration. |
 | [`docs/open-research-tooling.md`](docs/open-research-tooling.md) | Optional open-source research tools for discovery, PDF parsing, experiments, workflows, and paper builds. |
+| [`docs/refactor-roadmap.md`](docs/refactor-roadmap.md) | Engineering refactor plan for splitting large scripts into core modules. |
 
 ### Safety Rules
 
@@ -649,6 +650,7 @@ paperfactory web --open
 | [`docs/latex-paper-skills-adaptation.md`](docs/latex-paper-skills-adaptation.md) | LaTeX 写作 skills 集成。 |
 | [`docs/drawio-figure-integration.md`](docs/drawio-figure-integration.md) | Draw.io 图表 bundle 集成。 |
 | [`docs/open-research-tooling.md`](docs/open-research-tooling.md) | 文献发现、PDF 解析、实验追踪、工作流复现和论文构建的可选开源科研工具。 |
+| [`docs/refactor-roadmap.md`](docs/refactor-roadmap.md) | 工程化重构路线：把大脚本逐步拆成核心模块。 |
 
 ### 安全规则
 
