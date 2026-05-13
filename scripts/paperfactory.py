@@ -653,6 +653,7 @@ def command_doctor(args: argparse.Namespace) -> int:
         "data-availability",
         "best-paper-writing-reference",
         "latex-typst-paper",
+        "llm-rl-toolkit",
         "manuscript-audit",
         "paper-format-self-check",
         "paper-reader",
@@ -753,6 +754,9 @@ def command_doctor(args: argparse.Namespace) -> int:
         ("pkg:pdf:pdfminer", "pdfminer", "fallback PDF layout/text extraction", "pdfminer.six"),
         ("pkg:config:hydra", "hydra", "composable experiment configuration", "hydra-core"),
         ("pkg:config:omegaconf", "omegaconf", "typed experiment configuration", "omegaconf"),
+        ("pkg:llm:trl", "trl", "Hugging Face post-training trainers", "trl"),
+        ("pkg:llm:ms-swift", "swift", "ModelScope fine-tuning/RL full pipeline", "ms-swift"),
+        ("pkg:llm:verl", "verl", "large-scale LLM RL post-training", "git+https://github.com/verl-project/verl.git"),
     )
     for label, module, purpose, package in research_packages:
         append_python_package_check(checks, label, module, purpose, package=package)

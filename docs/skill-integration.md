@@ -15,6 +15,7 @@ The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (f
 | PaperFactory skill | Local sources condensed | Purpose |
 | --- | --- | --- |
 | `paper-reader` | `nature-reader`, `huggingface-papers`, `auto-research` | Source-grounded paper reading and baseline extraction |
+| `llm-rl-toolkit` | `chengyuZou/Open-LLM`, official TRL/verl/ms-swift/LLaMA-Factory/OpenRLHF docs | LLM/Agent/RAG/RL resource routing and mature framework selection before custom infrastructure |
 | `citation-workflow` | `bib-search-citation`, `nature-citation`, `zotero`, `huggingface-papers` | Citation search, support grading, BibTeX/Typst/LaTeX snippets |
 | `scientific-figure` | `plot`, `nature-figure`, conference writing rules | Figure contracts, source-data manifests, export QA |
 | `drawio-academic-skills` | `bahayonghang/drawio-skills` | Editable Draw.io bundles for paper architecture, workflow, roadmap, and method diagrams |
@@ -48,6 +49,7 @@ The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (f
 - `scripts/manuscript_check.py`: now also flags KLC-style mechanical issues such as smart quotes, malformed `i.e.,`/`e.g.,`, breakable LaTeX references, raw `resizebox`, loose `itemize`, arXiv-preprint bibliography entries, and noisy `booktitle` fields.
 - `scripts/make_metric_plot.py`: simple metric plotting with paper-style exports.
 - `scripts/fetch_best_paper_references.py`: downloads curated award-paper PDFs and arXiv source bundles into the ignored local cache `reference_papers/cache/`.
+- `llm-rl-toolkit`: summarizes Open-LLM into a task map and adds a framework selector for TRL, verl, ms-swift, LLaMA-Factory, and OpenRLHF.
 - `paperfactory doctor`: checks whether the external `latex-paper-skills` bundle and its `_shared` runtime helpers are installed.
 - `paperfactory doctor`: also reports optional open research tools for literature APIs, PDF extraction, LaTeX builds, experiment tracking, workflow orchestration, and artifact versioning.
 - `docs/open-research-tooling.md`: maps open-source research tools to PaperFactory phases and defines fallback rules when optional tools are unavailable.

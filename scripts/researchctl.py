@@ -90,31 +90,33 @@ PHASES: tuple[Phase, ...] = (
         gate="Data card and benchmark profile record formats, counts, splits, labels, leakage checks, candidate construction, negative sampling, baseline/comparison/evaluation candidates, and metric protocol.",
         prompt_focus=(
             "Load or inspect the real dataset when available.",
-            "Write a benchmark profile: dataset, baseline floor, comparison targets, evaluation metrics, and domain-specific constraints.",
+            "Write a benchmark profile: dataset, baseline candidates, comparison targets, evaluation metrics, and domain-specific constraints.",
             "Write exact split and metric protocol.",
             "Flag proxy data clearly and do not let it redefine the research target.",
         ),
     ),
     Phase(
         key="cheap_baselines",
-        title="Cheap Baselines",
-        objective="Run simple strong baselines before expensive method work.",
+        title="Baseline Code Probe",
+        objective="Inspect baseline/reference code and run the smallest protocol-matched checks before method design.",
         required=(
             "baselines/cheap_baselines.md",
             "experiments/cheap_baselines/metrics.json",
             "reports/cheap_baselines.json",
         ),
-        gate="At least one cheap but meaningful baseline is run under the exact target protocol, with commands and raw metrics saved.",
+        gate="At least one relevant baseline or reference codebase is inspected and lightly exercised under the target protocol, with runnable entry points, reuse notes, commands, raw diagnostic metrics, GPU/training requirements, and reproduction risks saved. Do not replace a GPU-trained baseline with a weak CPU substitute unless it is explicitly marked diagnostic.",
         prompt_focus=(
-            "Implement or run simple baselines such as popularity, nearest neighbor, retrieval, heuristic, or frozen-model scoring.",
-            "Use the same split, candidate set, metrics, and inference constraints planned for the method.",
-            "Write metrics to experiments/cheap_baselines/metrics.json.",
+            "Inspect baseline/reference repositories as code maps: data entry, model entry, training command, evaluation command, configs, checkpoint availability, GPU requirements, and reusable modules.",
+            "Run only the smallest meaningful smoke check needed to verify installation, data format, evaluation protocol, and metric extraction.",
+            "Use the same split, candidate set, metrics, and inference constraints planned for the method when a diagnostic run is possible.",
+            "Write diagnostic metrics or known published/reference metrics to experiments/cheap_baselines/metrics.json, clearly marking whether each number is diagnostic, released-checkpoint, reported-paper, or reproduced.",
+            "Record which baselines should be fully reproduced after the method shows a signal.",
         ),
     ),
     Phase(
         key="method_design",
         title="Method Design",
-        objective="Design a staged method only after the gap and baseline floor are known.",
+        objective="Design a staged method after the gap, baseline interfaces, and diagnostic comparison targets are known.",
         required=(
             "method/atomic_concepts.md",
             "method/nearest_prior_diff.md",
@@ -135,7 +137,7 @@ PHASES: tuple[Phase, ...] = (
             "Write method/novelty_risk.json with numeric novelty_risk_score, reasons, overlap types, missing evidence, required repairs, and a pass_to_smoke boolean. If risk is high or pass_to_smoke is false, set reports/method_design.json status to needs_more_work and route repeat or jump_back instead of advancing.",
             "Break the innovation into atomic academic definitions; for each record math, paper trace, code trace, implementation hook, and falsifying ablation.",
             "Write a concrete implementation plan covering data processing, model, training, testing, commands, expected outputs, and low-budget smoke settings.",
-            "Do not directly import reference repositories into the final method; adapt the ideas into self-contained code with attribution notes.",
+            "Do not directly import reference repositories into the final method; adapt the ideas into self-contained code with attribution notes. For LLM training/RL infrastructure, prefer a small adapter/config around TRL, verl, ms-swift, LLaMA-Factory, or OpenRLHF over custom trainer code.",
             "Design a lightweight first version and a clear escalation path.",
             "Specify ablations and failure criteria before running expensive experiments.",
         ),
@@ -150,19 +152,19 @@ PHASES: tuple[Phase, ...] = (
             "experiments/method_smoke/metrics.json",
             "reports/method_smoke.json",
         ),
-        gate="Smoke test executes a self-contained minimal method path on real or explicitly marked proxy data, records the runnable project manifest, and compares against the strongest cheap baseline.",
+        gate="Smoke test executes a self-contained minimal method path on real or explicitly marked proxy data, records the runnable project manifest, and compares against available baseline-probe or reference metrics without claiming final fairness.",
         prompt_focus=(
             "Implement the smallest method path that tests the central hypothesis.",
             "When building method code, keep a clear data/model/training/testing/data_processing/run_training_testing.py-style structure unless the project already has a stronger established layout.",
             "Run a very small first experiment, such as a two-epoch or otherwise low-budget smoke run, before longer training.",
-            "Run a small experiment with saved command, config, outputs, and metrics.",
+            "Run a small experiment with saved command, config, outputs, and metrics; compare against baseline-probe metrics when available and mark the comparison as diagnostic.",
             "If it fails, preserve the failure and propose a concrete repair rather than hiding it.",
         ),
     ),
     Phase(
         key="advanced_comparison",
         title="Advanced Comparison",
-        objective="Compare to strong baselines fairly once the method has a signal.",
+        objective="Reproduce or evaluate strong baselines fairly once the method has a credible signal.",
         required=(
             "baselines/advanced_comparison.md",
             "experiments/advanced_comparison/refinement_plan.md",
@@ -172,8 +174,9 @@ PHASES: tuple[Phase, ...] = (
         gate="Advanced comparison uses released checkpoints or justified reproduction with matched protocol, includes a judge/refinement pass against the atomic concepts and protocol, or clearly records why escalation is not yet justified.",
         prompt_focus=(
             "Run a judge/refinement pass before escalation: audit implementation against atomic concepts, protocol, and reference codebases, then save the repair or refinement plan.",
+            "Select the key baselines to reproduce based on the method's diagnostic results and the survey's closest-prior matrix.",
             "Prefer released checkpoints and official evaluation code when possible.",
-            "Retrain only when checkpoints are unavailable or protocol-incompatible.",
+            "Retrain baselines only when checkpoints are unavailable, protocol-incompatible, or final claims require a matched training budget.",
             "After each advanced run, analyze why the result changed and whether the next experiment is justified.",
             "Mark any non-identical comparison as diagnostic instead of final.",
         ),
@@ -856,6 +859,8 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     companion_skills = []
     if phase.key in {"survey", "data_sanity", "method_design", "method_smoke", "advanced_comparison"}:
         companion_skills.append("auto-research")
+    if phase.key in {"survey", "method_design", "method_smoke", "advanced_comparison"}:
+        companion_skills.append("llm-rl-toolkit")
     if phase.key in {"method_design", "paper_evidence", "paper_drafting", "internal_review"}:
         companion_skills.append("best-paper-writing-reference")
     if phase.key == "survey":
@@ -901,23 +906,31 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
             "Use OpenAlex, Crossref, arXiv, and Semantic Scholar APIs when useful for source discovery, DOI/arXiv metadata, citation trails, and related-work expansion.",
             "Cache raw API responses under .research/literature/api_cache/ and cite the exact query, date, and source.",
             "For PDFs, prefer GROBID for structured TEI extraction when available; otherwise use pdftotext or Python PDF packages and record the extraction method.",
+            "If the task involves LLMs, Agents, RAG, fine-tuning, or RL, use llm-rl-toolkit to seed framework candidates from Open-LLM and write .research/llm_tooling/tool_decision.md before custom infrastructure.",
         ),
         "data_sanity": (
             "Use DVC or git-lfs for large data/model artifacts when available; otherwise write a manifest with checksums, source URLs, and access constraints.",
             "Use Hydra/OmegaConf-style config files or a small equivalent config format so dataset, split, and metric choices are reproducible.",
         ),
+        "method_design": (
+            "For LLM, Agent, RAG, fine-tuning, or RL methods, apply llm-rl-toolkit before inventing infrastructure; update .research/llm_tooling/tool_decision.md if the selected framework changes.",
+            "Treat baseline code probes as interface and metric context, not as final fairness evidence unless the metrics are explicitly reproduced under the target protocol.",
+        ),
         "cheap_baselines": (
-            "Track baseline parameters, commands, metrics, and output artifacts with MLflow when available, or save the same fields in JSON/CSV under .research/experiments/.",
-            "Prefer Makefile or Snakemake targets for rerunnable baseline commands when the experiment has more than one step.",
+            "Track baseline code-probe parameters, commands, diagnostic metrics, published/reference metrics, GPU requirements, and output artifacts with MLflow when available, or save the same fields in JSON/CSV under .research/experiments/.",
+            "Prefer Makefile or Snakemake targets for rerunnable baseline probes when the setup has more than one step.",
+            "Do not downgrade GPU-trained baselines to weak CPU substitutes as if they were fair comparisons; mark such runs diagnostic and defer full reproduction until advanced_comparison.",
         ),
         "method_smoke": (
             "Use MLflow for smoke-run parameters, metrics, checkpoints, and notes when available.",
             "Use Hydra/OmegaConf-style configs and a Makefile or Snakemake target for the smallest rerunnable method path.",
+            "For LLM fine-tuning or RL smoke tests, prefer TRL, verl, ms-swift, LLaMA-Factory, or OpenRLHF examples/configs before writing trainer code.",
         ),
         "advanced_comparison": (
             "Use MLflow to compare runs and checkpoint metadata when available; keep released-checkpoint provenance and evaluation commands explicit.",
             "Use DVC/git-lfs or checksummed manifests for large checkpoints and result artifacts.",
             "Use Snakemake or Makefile targets for multi-step fair-comparison pipelines.",
+            "For LLM comparisons, keep the selected framework, version, official example/config provenance, reward code, dataset format, and evaluation harness in the evidence registry.",
             "When designing final comparison evidence, inspect the curated award-paper references for baseline tiers, ablation structure, and failure-boundary reporting.",
         ),
         "paper_evidence": (

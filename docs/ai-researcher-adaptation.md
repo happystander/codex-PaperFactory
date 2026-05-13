@@ -46,7 +46,7 @@ and protocol implications.
 | `survey` | `literature/paper_priority_scores.json` | Rank papers by relevance, recency, citation signal, code availability, protocol closeness, and baseline strength. |
 | `survey` | `literature/claim_extraction.json` | Extract task, method, dataset, metric, baseline, limitation, and claim anchors into a machine-readable file. |
 | `survey` | `literature/code_interface_map.md` | Map reference repos to data/model/training/evaluation/config interfaces and reusable modules. |
-| `data_sanity` | `data/benchmark_profile.md` | Fix dataset, baseline floor, comparison targets, metrics, and domain constraints. |
+| `data_sanity` | `data/benchmark_profile.md` | Fix dataset, baseline candidates, comparison targets, metrics, and domain constraints. |
 | `method_design` | `method/atomic_concepts.md` | Turn the proposed method into auditable units with math, paper, code, and ablation links. |
 | `method_design` | `method/nearest_prior_diff.md` | Compare against the nearest three prior works at module level before claiming novelty. |
 | `method_design` | `method/candidate_methods.json` | Generate multiple candidate methods with hypotheses, costs, overlaps, and falsifying ablations. |

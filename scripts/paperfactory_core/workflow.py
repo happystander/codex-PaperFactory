@@ -40,15 +40,15 @@ PHASE_POLICIES: dict[str, dict[str, Any]] = {
     },
     "cheap_baselines": {
         "entry_condition": "Data protocol is explicit.",
-        "failure_policy": "repeat with simpler baselines; jump_back to data_sanity if protocol blocks evaluation.",
+        "failure_policy": "repeat with narrower baseline code probes; jump_back to data_sanity if protocol blocks evaluation.",
         "retry_budget": 4,
         "max_runtime_hours": 12,
-        "review_gate": "baseline_floor_review",
+        "review_gate": "baseline_code_probe_review",
         "memory_inputs": ("phase_memory", "evidence_registry", "task_queue"),
     },
     "method_design": {
-        "entry_condition": "Baseline floor and novelty gap are known.",
-        "failure_policy": "jump_back to survey or cheap_baselines if the idea is not distinct or testable.",
+        "entry_condition": "Baseline interfaces, diagnostic metrics, and novelty gap are known.",
+        "failure_policy": "jump_back to survey or baseline code probe if the idea is not distinct or testable.",
         "retry_budget": 4,
         "max_runtime_hours": 8,
         "review_gate": "innovation_falsifiability_review",
@@ -206,4 +206,3 @@ def write_state_machine(
     path = root / WORKFLOW_STATE_FILE
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return payload
-

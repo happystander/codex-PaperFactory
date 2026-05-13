@@ -78,6 +78,7 @@ Survey and method-design artifacts have stricter contracts because they control 
 | `literature/paper_priority_scores.json` | Ranked papers with relevance, recency, citation signal, code availability, protocol closeness, baseline strength, total score, include/exclude decision, and reason. |
 | `literature/claim_extraction.json` | Structured extraction per paper: task, method, datasets, metrics, baselines, limitations, claims, source anchors, and code/checkpoint/data availability. |
 | `literature/code_interface_map.md` | Reference repository interface map: data entry, model entry, training command, evaluation command, config system, reusable modules, and incompatibilities. |
+| `llm_tooling/tool_decision.md` | Required for LLM/Agent/RAG/RL tasks: task type, constraints, candidate frameworks, selected framework, local checks, reuse plan, and fallback. |
 | `method/nearest_prior_diff.md` | Module-level comparison against the nearest three prior works: inputs, representation, objective/loss, architecture, training data, inference, assumptions, code hooks, and what remains new. |
 | `method/candidate_methods.json` | Multiple candidate methods with hypothesis, mechanism, expected win, implementation cost, required data, strongest overlap, falsifying ablation, and smoke-test feasibility. |
 | `method/idea_critic.md` | Skeptical reviewer pass that rejects weak candidates and explains repairs before implementation. |

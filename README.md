@@ -42,6 +42,7 @@ flowchart LR
 | Human control | Chinese-by-default Web UI with Chinese/English switching, start/pause, status, runtime control, file preview, memory mode, custom phases, and intervention notes. |
 | Codex visibility | Codex-authored natural-language progress feed, Codex status, PID, last activity, and token/quota snapshot when available. |
 | Research workflow | Scope, survey, data sanity, baselines, method design, smoke tests, advanced comparisons, evidence, drafting, review. |
+| LLM/RL tooling | Open-LLM resource routing plus TRL, verl, ms-swift, LLaMA-Factory, and OpenRLHF framework selection before custom trainers. |
 | Writing and figures | Scientific plots, Draw.io editable diagram bundles, LaTeX/BibTeX drafting checkpoints, and top-conference-style internal review. |
 | Customization | Base phases are locked; users can insert custom phases with their own prompts between base phases. |
 
@@ -174,12 +175,12 @@ The base workflow is locked. Users can insert custom phases, but they cannot del
 | # | Phase | Purpose | Required Report |
 | --- | --- | --- | --- |
 | 1 | `scope` | Define target problem, exclusions, venue/domain, datasets, metrics, compute, risks, success criteria. | `reports/scope.json` |
-| 2 | `survey` | Search primary sources, score paper priority, extract claims, inspect recent papers/repos, build code interface map, baseline matrix, and novelty gap. | `reports/survey.json` |
+| 2 | `survey` | Search primary sources, score paper priority, extract claims, inspect recent papers/repos, build code interface map, baseline matrix, LLM/RL tool candidates when relevant, and novelty gap. | `reports/survey.json` |
 | 3 | `data_sanity` | Verify dataset, splits, labels, leakage risk, metrics, protocol. | `reports/data_sanity.json` |
-| 4 | `cheap_baselines` | Run simple strong baselines before method work. | `reports/cheap_baselines.json` |
+| 4 | `cheap_baselines` | Baseline code probe: inspect reference implementations, run minimal protocol checks, and record diagnostic/reference metrics. The legacy key is kept for compatibility; it is not limited to cheap baselines. | `reports/cheap_baselines.json` |
 | 5 | `method_design` | Design the method from nearest-prior diff, candidate generation, critic review, novelty risk gate, atomic concepts, ablations, and implementation plan. | `reports/method_design.json` |
-| 6 | `method_smoke` | Run the smallest self-contained method path and compare with cheap baselines. | `reports/method_smoke.json` |
-| 7 | `advanced_comparison` | Compare fairly against strong baselines, released checkpoints, or justified reproductions. | `reports/advanced_comparison.json` |
+| 6 | `method_smoke` | Run the smallest self-contained method path and compare diagnostically against baseline-probe or reference metrics. | `reports/method_smoke.json` |
+| 7 | `advanced_comparison` | Reproduce or evaluate strong baselines fairly after the method shows a credible signal. | `reports/advanced_comparison.json` |
 | 8 | `paper_evidence` | Assemble results, ablations, failure cases, analysis, figures, Draw.io bundles. | `reports/paper_evidence.json` |
 | 9 | `paper_drafting` | Draft Markdown/LaTeX/BibTeX paper only from supported evidence. | `reports/paper_drafting.json` |
 | 10 | `internal_review` | Act as a top-conference reviewer and audit novelty, evidence, fairness, reproducibility, LaTeX QA, and final format hygiene. | `reports/internal_review.json` |
@@ -300,6 +301,7 @@ paperfactory web --open
 | `citation-workflow` | Citation search, support mapping, BibTeX/LaTeX snippets. |
 | `scientific-figure` | Figure planning, source-data manifests, plot QA. |
 | `drawio-academic-skills` | Editable method/workflow/architecture diagram bundles. |
+| `llm-rl-toolkit` | Open-LLM navigation and mature LLM fine-tuning/RL framework selection before custom infrastructure. |
 | `best-paper-writing-reference` | Curated ICLR/NeurIPS/ICML/ACL/AAAI award-paper references for experiment and writing patterns. |
 | `conference-paper-writing` | Evidence-grounded conference paper drafting. |
 | `conference-page-budget` | 8-page double-column, 9-page single-column, and appendix page-budget planning. |
@@ -394,6 +396,7 @@ flowchart LR
 | 人工控制 | Web UI 默认中文，支持中英文切换、启动/暂停、状态查看、运行时控制、文件预览、记忆模式、自定义阶段和人工介入。 |
 | Codex 可视化 | 展示 Codex 自己写入的自然语言进展、运行 PID、最后活动、Codex 状态和余量。 |
 | 科研流程 | 范围定义、综述、数据检查、基线、方法设计、烟测、高级比较、证据整理、写作、内审。 |
+| LLM/RL 工具链 | 用 Open-LLM 做资源路由，并在自写 trainer 前优先选择 TRL、verl、ms-swift、LLaMA-Factory、OpenRLHF。 |
 | 写作与图表 | 科研绘图、Draw.io 可编辑图表 bundle、LaTeX/BibTeX 写作检查点、顶会审稿式内审。 |
 | 自定义 | 基础阶段锁定；用户可以在基础阶段之间插入带 Prompt 的自定义阶段。 |
 
@@ -526,12 +529,12 @@ Web UI 会直接展示运行时层：当前状态机节点、下一条队列任�
 | # | 阶段 | 目的 | 阶段报告 |
 | --- | --- | --- | --- |
 | 1 | `scope` | 明确问题、排除范围、领域/会议、数据集、指标、算力、风险和成功标准。 | `reports/scope.json` |
-| 2 | `survey` | 查 primary sources，做论文优先级评分、claim extraction、代码接口图、baseline matrix 和 novelty gap。 | `reports/survey.json` |
+| 2 | `survey` | 查 primary sources，做论文优先级评分、claim extraction、代码接口图、baseline matrix、相关 LLM/RL 工具候选和 novelty gap。 | `reports/survey.json` |
 | 3 | `data_sanity` | 检查数据、切分、标签、泄漏风险、指标协议。 | `reports/data_sanity.json` |
-| 4 | `cheap_baselines` | 在做方法前先跑便宜但强的基线。 | `reports/cheap_baselines.json` |
+| 4 | `cheap_baselines` | Baseline 代码探查：检查参考实现、跑最小协议验证、记录诊断/参考指标。保留旧 key 是为了兼容，不代表只能跑 cheap baseline。 | `reports/cheap_baselines.json` |
 | 5 | `method_design` | 基于 nearest-prior diff、候选方法生成、critic 审查、novelty risk gate、原子概念、消融和实现计划设计方法。 | `reports/method_design.json` |
-| 6 | `method_smoke` | 跑最小自包含方法路径，并和 cheap baseline 比较。 | `reports/method_smoke.json` |
-| 7 | `advanced_comparison` | 和强基线、官方 checkpoint 或合理复现做公平比较。 | `reports/advanced_comparison.json` |
+| 6 | `method_smoke` | 跑最小自包含方法路径，并和 baseline 探查指标或参考指标做诊断比较。 | `reports/method_smoke.json` |
+| 7 | `advanced_comparison` | 方法出现可信信号后，再公平复现或评估强 baseline。 | `reports/advanced_comparison.json` |
 | 8 | `paper_evidence` | 整理结果、消融、失败案例、分析、科研图和 Draw.io bundle。 | `reports/paper_evidence.json` |
 | 9 | `paper_drafting` | 只基于已有证据写 Markdown/LaTeX/BibTeX 论文。 | `reports/paper_drafting.json` |
 | 10 | `internal_review` | 扮演顶会审稿人检查创新性、证据、公平性、复现性、LaTeX QA 和最终格式自查。 | `reports/internal_review.json` |
@@ -652,6 +655,7 @@ paperfactory web --open
 | `citation-workflow` | 引用搜索、claim 支撑映射、BibTeX/LaTeX 片段。 |
 | `scientific-figure` | 图表规划、source-data manifest、绘图 QA。 |
 | `drawio-academic-skills` | 可编辑的方法图、流程图、架构图 bundle。 |
+| `llm-rl-toolkit` | Open-LLM 资源导航，以及自写基础设施前的成熟 LLM 微调/RL 框架选型。 |
 | `best-paper-writing-reference` | ICLR/NeurIPS/ICML/ACL/AAAI 获奖论文参考库，用于实验设计和写作结构。 |
 | `conference-paper-writing` | 基于证据的会议论文写作。 |
 | `conference-page-budget` | 8 页双栏、9 页单栏和附录的页数预算规划。 |

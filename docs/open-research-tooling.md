@@ -14,6 +14,7 @@ PaperFactory 的 skill 层已经覆盖科研任务拆解、文献阅读、引用
 | 实验追踪 | [MLflow Tracking](https://mlflow.org/docs/latest/ml/tracking) | 记录参数、指标、代码版本、artifact，并用 UI 比较实验 | `cheap_baselines`, `method_smoke`, `advanced_comparison` |
 | 工作流复现 | [Snakemake](https://snakemake.github.io/), `make` | 把多步实验组织成可重跑的 DAG 或命令目标 | `cheap_baselines`, `method_smoke`, `advanced_comparison` |
 | 配置管理 | [Hydra](https://hydra.cc/docs/intro/), `omegaconf` | 组合实验配置、命令行覆盖参数、避免脚本硬编码 | `data_sanity`, `method_smoke`, `advanced_comparison` |
+| LLM 微调/对齐/RL | [TRL](https://huggingface.co/docs/trl), [verl](https://verl.readthedocs.io/), [ms-swift](https://github.com/modelscope/ms-swift), [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory), [OpenRLHF](https://openrlhf.readthedocs.io/) | SFT、LoRA、DPO、PPO、GRPO、reward model、推理部署、评测和分布式 rollout；先选框架再写自定义代码 | `survey`, `method_design`, `method_smoke`, `advanced_comparison` |
 
 ## 最小安装组合
 
@@ -35,6 +36,7 @@ GROBID 更适合单独部署成本地服务，或者用 `grobid_client` 连接�
 ## Codex 使用规则
 
 - `survey` 阶段优先使用 arXiv/OpenAlex/Crossref/Semantic Scholar 做文献发现和元数据交叉验证，原始 JSON/XML 缓存在 `.research/literature/api_cache/`。
+- LLM/Agent/RAG/RL 任务要先用 `llm-rl-toolkit` 写 `.research/llm_tooling/tool_decision.md`，说明为什么选择 TRL、verl、ms-swift、LLaMA-Factory、OpenRLHF 或其他成熟框架。
 - PDF 解析要记录工具、命令、输入文件和输出路径。GROBID 输出应保留 TEI/XML；`pdftotext` 输出应保留纯文本。
 - 实验阶段优先把参数、指标、artifact 写入 MLflow；没有 MLflow 时必须写入 `.research/experiments/**/metrics.json` 和对应命令记录。
 - 大文件不直接塞进 Git。优先 DVC 或 git-lfs；没有这些工具时写 checksummed manifest。
