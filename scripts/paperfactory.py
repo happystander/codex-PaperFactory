@@ -738,6 +738,7 @@ def command_doctor(args: argparse.Namespace) -> int:
         ("tool:paper:bibtex", "bibtex", "BibTeX bibliography builds"),
         ("tool:diagram:dot", "dot", "Graphviz diagram rendering"),
         ("tool:diagram:inkscape", "inkscape", "SVG/PDF figure conversion and inspection"),
+        ("tool:gpu:nvidia-smi", "nvidia-smi", "GPU availability monitoring for UI and Codex prompts"),
         ("tool:pdf:pdftotext", "pdftotext", "fast local PDF text extraction"),
         ("tool:pdf:grobid", "grobid_client", "structured scholarly PDF extraction"),
         ("tool:pdf:java", "java", "running GROBID or Java PDF tooling"),

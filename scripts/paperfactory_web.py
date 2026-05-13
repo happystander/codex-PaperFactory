@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import researchctl
-from paperfactory_core import control, evidence, interventions, task_queue, ui_config
+from paperfactory_core import control, evidence, gpu, interventions, task_queue, ui_config
 from paperfactory_core.web_memory import read_memory_config, write_memory_config
 
 
@@ -664,6 +664,7 @@ def runtime_payload(root: Path) -> dict[str, Any]:
             "config": stop_config,
         },
         "interventions": patches,
+        "gpu": gpu.gpu_status(),
     }
 
 
@@ -882,6 +883,7 @@ def phase_payload(root: Path) -> dict[str, Any]:
             "last": last_route,
         },
         "interventions": read_interventions(root),
+        "gpu": gpu.gpu_status(),
     }
 
 
@@ -2852,6 +2854,26 @@ def index_html_cn_v3() -> bytes:
     .runtimeToneGood { color:var(--green); }
     .runtimeToneWarn { color:var(--amber); }
     .runtimeToneBad { color:var(--red); }
+    .gpuHeader { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .gpuSummary { color:var(--muted); font-size:13px; margin-top:3px; }
+    .gpuGrid { display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:10px; }
+    .gpuCard { padding:11px; border:1px solid var(--line); border-radius:10px; background:#fff; display:grid; gap:8px; min-height:132px; }
+    .gpuCard.idle { border-color:#bce4d2; background:#f5fbf8; }
+    .gpuCard.usable { border-color:#c7d2fe; background:#f8faff; }
+    .gpuCard.busy { border-color:#fed7aa; background:#fffaf3; }
+    .gpuCard.unavailable { border-color:#fecaca; background:#fff7f7; }
+    .gpuTop { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+    .gpuName { font-weight:820; font-size:14px; overflow-wrap:anywhere; }
+    .gpuBadge { flex:0 0 auto; border-radius:999px; padding:2px 7px; font-size:11px; font-weight:800; background:#eef2f7; color:var(--muted); }
+    .gpuBadge.idle { background:#eaf7f1; color:var(--green); }
+    .gpuBadge.usable { background:#eef2ff; color:var(--blue); }
+    .gpuBadge.busy { background:#fff8e7; color:var(--amber); }
+    .gpuBadge.unavailable { background:#fff0ee; color:var(--red); }
+    .gpuBar { height:7px; border-radius:999px; background:#e5eaf2; overflow:hidden; }
+    .gpuBar span { display:block; height:100%; border-radius:inherit; background:var(--green); }
+    .gpuBar.mid span { background:var(--amber); }
+    .gpuBar.high span { background:var(--red); }
+    .gpuStats { display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:12px; color:var(--muted); }
     .flow { display: grid; grid-template-columns: repeat(10, minmax(98px,1fr)); gap: 7px; overflow-x: auto; }
     .phase { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: #fff; font-size: 12px; min-height: 74px; text-align:left; font-weight:600; }
     .phase.current { border-color: var(--blue); background: var(--soft-blue); }
@@ -3048,6 +3070,16 @@ def index_html_cn_v3() -> bytes:
         </div>
       </div>
       <section>
+        <div class="gpuHeader">
+          <div>
+            <h2 data-i18n="gpu_status">GPU 状态</h2>
+            <div class="gpuSummary" id="gpuSummary" data-i18n="gpu_reading">正在读取显卡状态</div>
+          </div>
+          <span class="pill" id="gpuPill">-</span>
+        </div>
+        <div class="gpuGrid" id="gpuGrid"></div>
+      </section>
+      <section>
         <div class="row" style="justify-content:space-between">
           <h2 data-i18n="runtime_control">运行时控制</h2>
           <button id="refreshRuntimeBtn" data-i18n="refresh_runtime">刷新运行时</button>
@@ -3136,6 +3168,11 @@ def index_html_cn_v3() -> bytes:
         codex_status:'Codex 状态', short_quota:'短周期余量', long_quota:'长周期余量', plan:'计划', context:'上下文',
         waiting_codex_session:'等待读取 Codex session', file_tree:'文件树', run_status:'运行状态', reading:'正在读取',
         please_wait:'请稍候', current_phase:'当前阶段', phase_report:'阶段报告', last_activity:'最后活动',
+        gpu_status:'GPU 状态', gpu_reading:'正在读取显卡状态', gpu_unavailable:'无法读取 GPU',
+        gpu_missing_tool:'未找到 nvidia-smi', gpu_driver_unavailable:'NVIDIA 驱动不可用', gpu_none:'未发现 GPU',
+        gpu_available_summary:'{usable} 张可用 / {idle} 张空闲 / 共 {total} 张', gpu_busy_summary:'共 {total} 张 GPU，当前没有空闲卡',
+        gpu_recommended:'推荐 GPU：{indexes}', gpu_no_recommended:'暂无推荐 GPU', gpu_processes:'进程 {count}',
+        gpu_memory:'显存', gpu_util:'利用率', gpu_temp:'温度', gpu_power:'功耗', gpu_last_check:'检查时间 {time}',
         runtime_control:'运行时控制', refresh_runtime:'刷新运行时', state_machine:'状态机', task_queue:'任务队列',
         evidence_flow:'证据流', stop_conditions:'停止条件', runtime_details_summary:'查看队列、证据和介入补丁',
         phase_routing:'阶段路由', no_route:'暂无路由决策', route_history:'查看路由历史', workflow:'流程',
@@ -3181,6 +3218,11 @@ def index_html_cn_v3() -> bytes:
         codex_status:'Codex Status', short_quota:'Short-window quota', long_quota:'Long-window quota', plan:'Plan', context:'Context',
         waiting_codex_session:'Waiting for Codex session', file_tree:'File Tree', run_status:'Run Status', reading:'Reading',
         please_wait:'Please wait', current_phase:'Current Phase', phase_report:'Phase Report', last_activity:'Last Activity',
+        gpu_status:'GPU Status', gpu_reading:'Reading GPU status', gpu_unavailable:'GPU unavailable',
+        gpu_missing_tool:'nvidia-smi not found', gpu_driver_unavailable:'NVIDIA driver unavailable', gpu_none:'No GPU detected',
+        gpu_available_summary:'{usable} usable / {idle} idle / {total} total', gpu_busy_summary:'{total} GPU(s), none idle',
+        gpu_recommended:'Recommended GPU: {indexes}', gpu_no_recommended:'No recommended GPU', gpu_processes:'Processes {count}',
+        gpu_memory:'Memory', gpu_util:'Utilization', gpu_temp:'Temp', gpu_power:'Power', gpu_last_check:'Checked {time}',
         runtime_control:'Runtime Control', refresh_runtime:'Refresh Runtime', state_machine:'State Machine', task_queue:'Task Queue',
         evidence_flow:'Evidence Flow', stop_conditions:'Stop Conditions', runtime_details_summary:'View queue, evidence, and intervention patches',
         phase_routing:'Phase Routing', no_route:'No route decision yet', route_history:'View Route History', workflow:'Workflow',
@@ -3528,6 +3570,70 @@ def index_html_cn_v3() -> bytes:
         });
       });
     }
+    function gpuStatusLabel(status) {
+      return ({
+        idle: uiLanguage === 'en' ? 'Idle' : '空闲',
+        usable: uiLanguage === 'en' ? 'Usable' : '可用',
+        busy: uiLanguage === 'en' ? 'Busy' : '繁忙',
+        unavailable: uiLanguage === 'en' ? 'Unavailable' : '不可用'
+      })[status] || (status || '-');
+    }
+    function renderGpuStatus(gpu) {
+      const data = gpu || {};
+      const pill = $('gpuPill');
+      const grid = $('gpuGrid');
+      if (!data.command_available) {
+        pill.className = 'pill stopped';
+        pill.textContent = t('gpu_missing_tool');
+        $('gpuSummary').textContent = t('gpu_missing_tool');
+        grid.innerHTML = `<div class="gpuCard unavailable"><div class="gpuTop"><div class="gpuName">${esc(t('gpu_missing_tool'))}</div><span class="gpuBadge unavailable">${esc(t('unavailable'))}</span></div><div class="tiny">${esc(data.message || '')}</div></div>`;
+        return;
+      }
+      if (!data.available) {
+        pill.className = 'pill stopped';
+        const label = data.health === 'driver_unavailable' ? t('gpu_driver_unavailable') : t('gpu_unavailable');
+        pill.textContent = label;
+        $('gpuSummary').textContent = [label, data.error || data.message || ''].filter(Boolean).join(' · ');
+        grid.innerHTML = `<div class="gpuCard unavailable"><div class="gpuTop"><div class="gpuName">${esc(label)}</div><span class="gpuBadge unavailable">${esc(t('unavailable'))}</span></div><div class="tiny">${esc(data.error || data.message || '')}</div></div>`;
+        return;
+      }
+      if (!data.gpus || !data.gpus.length) {
+        pill.className = 'pill waiting';
+        pill.textContent = t('gpu_none');
+        $('gpuSummary').textContent = t('gpu_none');
+        grid.innerHTML = `<div class="gpuCard unavailable"><div class="gpuName">${esc(t('gpu_none'))}</div></div>`;
+        return;
+      }
+      const usable = data.usable_count || 0;
+      const idle = data.idle_count || 0;
+      const total = data.gpu_count || data.gpus.length;
+      const recommended = Array.isArray(data.recommended_gpu_indexes) ? data.recommended_gpu_indexes : [];
+      pill.className = `pill ${usable ? 'active' : 'waiting'}`;
+      pill.textContent = usable ? t('gpu_recommended', {indexes: recommended.join(', ') || '-'}) : t('gpu_no_recommended');
+      const checked = data.checked_at ? formatMessageTime(data.checked_at) : '-';
+      $('gpuSummary').textContent = `${usable ? t('gpu_available_summary', {usable, idle, total}) : t('gpu_busy_summary', {total})} · ${recommended.length ? t('gpu_recommended', {indexes: recommended.join(', ')}) : t('gpu_no_recommended')} · ${t('gpu_last_check', {time: checked})}`;
+      grid.innerHTML = data.gpus.map(g => {
+        const usedPct = g.memory_used_percent === null || g.memory_used_percent === undefined ? 0 : Math.max(0, Math.min(100, Number(g.memory_used_percent)));
+        const barClass = usedPct > 85 ? 'high' : usedPct > 60 ? 'mid' : '';
+        const status = g.status || 'busy';
+        const power = g.power_w === null || g.power_w === undefined ? '-' : `${g.power_w}W`;
+        const temp = g.temperature_c === null || g.temperature_c === undefined ? '-' : `${g.temperature_c}C`;
+        const util = g.utilization_percent === null || g.utilization_percent === undefined ? '-' : `${g.utilization_percent}%`;
+        return `<div class="gpuCard ${esc(status)}">
+          <div class="gpuTop"><div class="gpuName">GPU ${esc(g.index ?? '-')} · ${esc(g.name || '-')}</div><span class="gpuBadge ${esc(status)}">${esc(gpuStatusLabel(status))}</span></div>
+          <div>
+            <div class="quotaHead"><span class="label">${esc(t('gpu_memory'))}</span><span class="tiny">${esc(g.memory_used_mb ?? '-')} / ${esc(g.memory_total_mb ?? '-')} MiB</span></div>
+            <div class="gpuBar ${barClass}"><span style="width:${usedPct}%"></span></div>
+          </div>
+          <div class="gpuStats">
+            <span>${esc(t('gpu_util'))}: ${esc(util)}</span>
+            <span>${esc(t('gpu_temp'))}: ${esc(temp)}</span>
+            <span>${esc(t('gpu_power'))}: ${esc(power)}</span>
+            <span>${esc(t('gpu_processes', {count: g.process_count || 0}))}</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
     function renderStatus(data) {
       lastStatusData = data;
       $('researchDir').textContent = data.research_dir;
@@ -3544,6 +3650,7 @@ def index_html_cn_v3() -> bytes:
       $('jobMode').textContent = job.mode || t('no_task');
       $('pidValue').textContent = job.current_pid || '-';
       $('lastActivity').textContent = ago(job.last_activity && job.last_activity.age_seconds);
+      renderGpuStatus(data.gpu || {});
       $('startBtn').disabled = !!job.running;
       $('stopBtn').disabled = !job.running;
       workflowPhases = data.phases || [];
@@ -3875,6 +3982,8 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 self.send_json({"phases": researchctl.workflow_config_for_ui(self.root)})
             elif path == "/api/codex/status":
                 self.send_json(codex_status(self.root))
+            elif path == "/api/gpu/status":
+                self.send_json(gpu.gpu_status())
             elif path == "/api/logs":
                 limit = int(query.get("limit", ["120"])[0])
                 lines = []

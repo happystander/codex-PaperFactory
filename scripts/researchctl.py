@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from paperfactory_core import control, evidence, interventions, memory as memory_core, task_queue, ui_config, workflow
+from paperfactory_core import control, evidence, gpu, interventions, memory as memory_core, task_queue, ui_config, workflow
 
 
 STATE_VERSION = 1
@@ -1045,6 +1045,7 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     next_task = runtime.get("queue", {}).get("next_task") if isinstance(runtime.get("queue"), dict) else None
     next_task_text = json.dumps(next_task, ensure_ascii=False, indent=2) if next_task else "No pending task is currently selected."
     stop_text = json.dumps(runtime.get("stop", {}), ensure_ascii=False, indent=2)
+    gpu_text = gpu.gpu_prompt_context()
 
     return f"""You are running the Codex PaperFactory long-horizon workflow.
 
@@ -1086,6 +1087,8 @@ Current queue-selected task:
 
 Current stop/success decision:
 {stop_text}
+
+{gpu_text}
 
 Phase focus:
 {focus_list}

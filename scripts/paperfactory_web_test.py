@@ -70,6 +70,8 @@ def main() -> int:
             assert "${t('time')} ${time}" in index
             assert "运行时控制" in index
             assert "runtimeDetails" in index
+            assert "GPU 状态" in index
+            assert "gpuGrid" in index
             assert "langZhBtn" in index
             assert "langEnBtn" in index
             assert "User-facing language" not in index
@@ -82,6 +84,10 @@ def main() -> int:
             assert status["job"]["running"] is False
             assert status["job"]["health"] == "idle"
             assert status["job"]["state_label"]
+            assert "gpu" in status
+            assert "health" in status["gpu"]
+            gpu_status = fetch_json(base + "/api/gpu/status")
+            assert "checked_at" in gpu_status
 
             phase_page = fetch_text(base + "/phase?key=scope")
             assert "Research Scope" in phase_page
@@ -102,6 +108,7 @@ def main() -> int:
             assert ui["language"] == "zh"
             prompt_zh = fetch_json(base + "/api/prompt", {})
             assert "User-facing language: Simplified Chinese." in prompt_zh["prompt"]
+            assert "GPU resource snapshot:" in prompt_zh["prompt"]
             assert (root / "ui_config.json").exists()
 
             workflow = fetch_json(base + "/api/workflow")
@@ -250,6 +257,7 @@ def main() -> int:
 
             runtime = fetch_json(base + "/api/runtime")
             assert runtime["workflow"]["current_phase"] == "method_design"
+            assert "gpu" in runtime
             assert runtime["workflow"]["nodes"]
             assert runtime["queue"]["counts"]["pending"] >= 1
             assert runtime["queue"]["next_task"]

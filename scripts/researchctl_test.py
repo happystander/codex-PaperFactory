@@ -72,6 +72,7 @@ def main() -> int:
         assert ".research/workflow_state.json" in proc.stdout
         assert ".research/evidence/registry.json" in proc.stdout
         assert ".research/queue/tasks.jsonl" in proc.stdout
+        assert "GPU resource snapshot:" in proc.stdout
         assert "execute -> self-check -> repair -> evidence-check -> report -> route decision" in proc.stdout
         assert "Memory Contract" in (rd / "memory" / "handoff.md").read_text(encoding="utf-8")
 

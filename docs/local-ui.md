@@ -46,6 +46,7 @@ It provides:
 - a locked base workflow plus user-inserted custom phases; custom phase prompts live in `.research/workflow.json` and affect later prompt generation and phase advancement;
 - project switching across nearby `.research/` workspaces, so each research task can keep its own prompt memory settings;
 - Codex status monitoring from `~/.codex/sessions`, including active-session quota, reset time, context window, and token usage;
+- GPU status monitoring from `nvidia-smi`, including idle/usable/busy cards, memory usage, utilization, temperature, power, process count, and recommended GPU indexes. If the NVIDIA driver is unavailable, the UI shows that explicitly instead of silently appearing idle;
 - Codex-authored natural-language progress from `.research/progress/feed.jsonl`; the chat area does not synthesize progress or render raw logs;
 - cycle count, interval, and optional run-duration controls;
 - friendly memory profiles for light, standard, deep, and clean-start modes. Every mode starts from the generated `.research/memory/handoff.md`; stronger modes add phase summaries, artifact index, decision/risk memory, claim/evidence notes, logs, and current artifacts;

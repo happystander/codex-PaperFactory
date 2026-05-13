@@ -121,6 +121,7 @@ ssh -L 8765:127.0.0.1:8765 user@server
 | 文献/PDF 工具 | 推荐 | ScholarAIO workspace、arXiv/Crossref/Semantic Scholar、PDF/Office 解析、topic/citation graph。 | `./paperfactory doctor` |
 | 实验工具 | 推荐 | MLflow、DVC、git-lfs、Snakemake、Hydra。 | [`docs/open-research-tooling.md`](docs/open-research-tooling.md) |
 | 科学运行时工具 | 按任务需要 | GROMACS、LAMMPS、OpenFOAM、Quantum ESPRESSO、生信 CLI 等官方文档优先运行。 | `./paperfactory doctor` |
+| NVIDIA 工具 | GPU 任务需要 | Web UI 显示 GPU 显存、利用率、温度、进程数和推荐空闲卡；Codex prompt 会读取同一状态。 | `nvidia-smi` |
 | LLM/RL 框架 | 按任务需要 | TRL、verl、ms-swift 等。 | `./paperfactory doctor` |
 | 写作/绘图 skills | 推荐 | 论文写作、结果回填、节奏润色、Draw.io 图表。 | `./paperfactory doctor` |
 
@@ -423,6 +424,7 @@ ln -s "$(pwd)/paperfactory" ~/.local/bin/paperfactory
 | Literature/PDF tools | Recommended | ScholarAIO workspaces, literature APIs, PDF/Office extraction, topic/citation graphs. | `./paperfactory doctor` |
 | Experiment tools | Recommended | MLflow, DVC, git-lfs, Snakemake, Hydra. | [`docs/open-research-tooling.md`](docs/open-research-tooling.md) |
 | Scientific runtime tools | Task dependent | Official-doc-first GROMACS, LAMMPS, OpenFOAM, Quantum ESPRESSO, bioinformatics CLIs, and similar tools. | `./paperfactory doctor` |
+| NVIDIA tools | Required for GPU work | Web UI shows GPU memory, utilization, temperature, process count, and recommended idle cards; Codex prompts read the same snapshot. | `nvidia-smi` |
 | LLM/RL frameworks | Task dependent | TRL, verl, ms-swift, etc. | `./paperfactory doctor` |
 | Writing/figure skills | Recommended | Paper writing, result backfill, prose refinement, Draw.io figures. | `./paperfactory doctor` |
 
