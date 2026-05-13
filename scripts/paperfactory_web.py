@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import researchctl
-from paperfactory_core import interventions
+from paperfactory_core import control, evidence, interventions, task_queue
 from paperfactory_core.web_memory import read_memory_config, write_memory_config
 
 
@@ -617,6 +617,54 @@ def read_interventions(root: Path, limit_chars: int = 4000) -> str:
         return ""
     text = path.read_text(encoding="utf-8", errors="ignore")
     return text[-limit_chars:]
+
+
+def read_json_file(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def runtime_payload(root: Path) -> dict[str, Any]:
+    state = researchctl.load_state(root)
+    summary = researchctl.refresh_runtime(root, state)
+    phase = researchctl.current_phase(state, root)
+    phase_key = "complete" if phase is None else phase.key
+    workflow_state = read_json_file(root / "workflow_state.json")
+    registry = evidence.read_registry(root, str(state.get("task") or ""))
+    tasks = task_queue.read_tasks(root)
+    queue_summary = task_queue.summarize(
+        tasks,
+        active_phase=phase_key,
+        missing=[] if phase is None else researchctl.missing_required(root, phase),
+    )
+    stop = control.evaluate_stop(root, state, phase_key)
+    stop_config = control.read_stop_conditions(root)
+    patches = interventions.pending_patch_summary(root)
+    return {
+        "summary": summary,
+        "workflow": {
+            "current_phase": workflow_state.get("current_phase", phase_key),
+            "nodes": workflow_state.get("nodes", []),
+            "route_history": workflow_state.get("route_history", []),
+        },
+        "evidence": {
+            "summary": registry.get("summary", {}),
+            "claims": registry.get("claims", [])[-20:],
+            "rejections": registry.get("rejections", [])[-20:],
+        },
+        "queue": {
+            **queue_summary,
+            "tasks": tasks[-80:],
+        },
+        "control": {
+            "decision": stop,
+            "config": stop_config,
+        },
+        "interventions": patches,
+    }
 
 
 def stream_messages(root: Path, limit: int = 120) -> list[dict[str, str]]:
@@ -2740,6 +2788,15 @@ def index_html_cn_v3() -> bytes:
     .metric { padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.72); min-height: 72px; }
     .label { font-size: 12px; color: var(--muted); }
     .value { font-size: 17px; font-weight: 760; margin-top: 5px; overflow-wrap: anywhere; }
+    .runtimeGrid { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:10px; }
+    .runtimeCard { min-height:118px; padding:11px; border:1px solid var(--line); border-radius:8px; background:#fff; display:grid; gap:7px; align-content:start; }
+    .runtimeCard strong { font-size:18px; overflow-wrap:anywhere; }
+    .runtimeList { display:grid; gap:7px; margin-top:10px; }
+    .runtimeItem { padding:8px; border:1px solid var(--line); border-radius:8px; background:#fbfdff; font-size:12px; }
+    .runtimeItem strong { display:block; margin-bottom:3px; }
+    .runtimeToneGood { color:var(--green); }
+    .runtimeToneWarn { color:var(--amber); }
+    .runtimeToneBad { color:var(--red); }
     .flow { display: grid; grid-template-columns: repeat(10, minmax(98px,1fr)); gap: 7px; overflow-x: auto; }
     .phase { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: #fff; font-size: 12px; min-height: 74px; text-align:left; font-weight:600; }
     .phase.current { border-color: var(--blue); background: var(--soft-blue); }
@@ -2813,8 +2870,12 @@ def index_html_cn_v3() -> bytes:
     @media (max-width: 1050px) {
       .app { grid-template-columns: 1fr; }
       .metrics { grid-template-columns: 1fr 1fr; }
+      .runtimeGrid { grid-template-columns: 1fr 1fr; }
       .flow { grid-template-columns: repeat(5, minmax(92px,1fr)); }
       .feed { max-height: none; }
+    }
+    @media (max-width: 680px) {
+      .metrics, .runtimeGrid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -2927,6 +2988,38 @@ def index_html_cn_v3() -> bytes:
           <div class="metric"><div class="label">最后活动</div><div class="value" id="lastActivity">-</div></div>
         </div>
       </div>
+      <section>
+        <div class="row" style="justify-content:space-between">
+          <h2>运行时控制</h2>
+          <button id="refreshRuntimeBtn">刷新运行时</button>
+        </div>
+        <div class="runtimeGrid">
+          <div class="runtimeCard">
+            <div class="label">状态机</div>
+            <strong id="runtimeWorkflow">-</strong>
+            <span class="tiny" id="runtimeReviewGate">-</span>
+          </div>
+          <div class="runtimeCard">
+            <div class="label">任务队列</div>
+            <strong id="runtimeQueue">-</strong>
+            <span class="tiny" id="runtimeNextTask">-</span>
+          </div>
+          <div class="runtimeCard">
+            <div class="label">证据流</div>
+            <strong id="runtimeEvidence">-</strong>
+            <span class="tiny" id="runtimeClaimSafety">-</span>
+          </div>
+          <div class="runtimeCard">
+            <div class="label">停止条件</div>
+            <strong id="runtimeControl">-</strong>
+            <span class="tiny" id="runtimeStopReason">-</span>
+          </div>
+        </div>
+        <details>
+          <summary>查看队列、证据和介入补丁</summary>
+          <div class="runtimeList" id="runtimeDetails"></div>
+        </details>
+      </section>
       <section class="routePanel" id="routePanel" hidden>
         <div class="row" style="justify-content:space-between">
           <h2>阶段路由</h2>
@@ -3273,6 +3366,42 @@ def index_html_cn_v3() -> bytes:
       const reset = [resetText(primary.reset_in_seconds), resetText(secondary.reset_in_seconds)].filter(Boolean).join(' / ');
       $('codexStatusMeta').textContent = `${source} · 更新 ${ago(data.age_seconds)} · total ${compactNumber(total.total_tokens)} tokens${reset ? ' · ' + reset : ''}`;
     }
+    function renderRuntime(data) {
+      const workflow = data.workflow || {};
+      const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : [];
+      const currentNode = nodes.find(n => n.key === workflow.current_phase) || {};
+      $('runtimeWorkflow').textContent = `${workflow.current_phase || '-'} · ${nodes.length || 0} 阶段`;
+      $('runtimeReviewGate').textContent = currentNode.review_gate ? `审稿门禁：${currentNode.review_gate}` : '等待状态机';
+
+      const queue = data.queue || {};
+      const counts = queue.counts || {};
+      const pending = counts.pending || 0;
+      const running = counts.running || 0;
+      const failed = counts.failed || 0;
+      $('runtimeQueue').textContent = `${pending} 待办 / ${running} 运行 / ${failed} 失败`;
+      const nextTask = queue.next_task || null;
+      $('runtimeNextTask').textContent = nextTask ? `${nextTask.title || nextTask.id}` : '当前阶段暂无待办';
+
+      const evidence = data.evidence || {};
+      const evSummary = evidence.summary || {};
+      $('runtimeEvidence').textContent = `${evSummary.paper_safe_claims || 0} 可写 claim`;
+      $('runtimeClaimSafety').textContent = `已验证 ${evSummary.claims_verified || 0} / 总计 ${evSummary.claims_total || 0}`;
+
+      const control = data.control || {};
+      const decision = control.decision || {};
+      $('runtimeControl').textContent = decision.should_stop ? '需要暂停' : '允许继续';
+      $('runtimeControl').className = decision.should_stop ? 'runtimeToneBad' : 'runtimeToneGood';
+      const reasons = Array.isArray(decision.reasons) ? decision.reasons : [];
+      $('runtimeStopReason').textContent = reasons.length ? reasons.join('；') : '未触发停止条件';
+
+      const tasks = Array.isArray(queue.tasks) ? queue.tasks.slice().reverse().slice(0, 6) : [];
+      const claims = Array.isArray(evidence.claims) ? evidence.claims.slice().reverse().slice(0, 4) : [];
+      const patches = data.interventions && Array.isArray(data.interventions.recent_pending) ? data.interventions.recent_pending.slice().reverse().slice(0, 4) : [];
+      const taskHtml = tasks.length ? tasks.map(t => `<div class="runtimeItem"><strong>${esc(t.status || 'pending')} · ${esc(t.title || t.id)}</strong><span class="tiny">${esc(t.phase || '')} · priority ${esc(t.priority ?? '-')} · ${esc(t.expected_output || '')}</span></div>`).join('') : '<div class="runtimeItem">暂无任务。</div>';
+      const claimHtml = claims.length ? claims.map(c => `<div class="runtimeItem"><strong>${c.paper_safe ? '可写' : '候选'} · ${esc(c.claim || c.id)}</strong><span class="tiny">${esc(c.phase || '')} · confidence ${esc(c.confidence ?? '-')}</span></div>`).join('') : '<div class="runtimeItem">暂无 claim 证据。</div>';
+      const patchHtml = patches.length ? patches.map(p => `<div class="runtimeItem"><strong>${esc(p.kind || 'general')} · ${esc(p.status || 'pending')}</strong><span class="tiny">${esc(p.message || '')}</span></div>`).join('') : '<div class="runtimeItem">暂无待处理介入补丁。</div>';
+      $('runtimeDetails').innerHTML = `<div><div class="label">最近任务</div>${taskHtml}</div><div><div class="label">证据 claim</div>${claimHtml}</div><div><div class="label">介入补丁</div>${patchHtml}</div>`;
+    }
     function renderFeed(data) {
       const feed = $('feed');
       if (!data.messages.length) {
@@ -3304,6 +3433,7 @@ def index_html_cn_v3() -> bytes:
     }
     async function refreshStatus() { renderStatus(await api('/api/status')); }
     async function refreshCodexStatus() { renderCodexStatus(await api('/api/codex/status')); }
+    async function refreshRuntime() { renderRuntime(await api('/api/runtime')); }
     async function refreshFeed() { renderFeed(await api('/api/stream?limit=80')); }
     async function refreshTree() {
       const data = await api('/api/tree');
@@ -3338,7 +3468,7 @@ def index_html_cn_v3() -> bytes:
       $('memArtifacts').checked = !!mem.artifact_index;
     }
     async function refreshAll() {
-      const results = await Promise.allSettled([refreshProjects(), refreshStatus(), refreshCodexStatus(), refreshFeed(), refreshTree(), refreshMemory()]);
+      const results = await Promise.allSettled([refreshProjects(), refreshStatus(), refreshRuntime(), refreshCodexStatus(), refreshFeed(), refreshTree(), refreshMemory()]);
       if (!results.some(item => item.status === 'rejected')) setError('');
     }
     async function switchProject(path) {
@@ -3374,6 +3504,7 @@ def index_html_cn_v3() -> bytes:
       }
     }
     $('refreshBtn').addEventListener('click', refreshAll);
+    $('refreshRuntimeBtn').addEventListener('click', refreshRuntime);
     $('projectSelect').addEventListener('change', () => switchProject($('projectSelect').value));
     $('switchPathBtn').addEventListener('click', () => {
       const path = $('projectPathInput').value.trim();
@@ -3456,6 +3587,11 @@ def index_html_cn_v3() -> bytes:
         if (!results.some(item => item.status === 'rejected')) setError('');
       });
     }, 2000);
+    setInterval(() => {
+      Promise.allSettled([refreshRuntime()]).then(results => {
+        if (!results.some(item => item.status === 'rejected')) setError('');
+      });
+    }, 6000);
   </script>
 </body>
 </html>
@@ -3514,6 +3650,8 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 self.send_json({"text": read_interventions(self.root)})
             elif path == "/api/memory":
                 self.send_json(read_memory_config(self.root))
+            elif path == "/api/runtime":
+                self.send_json(runtime_payload(self.root))
             elif path == "/api/tree":
                 self.send_json({"files": file_tree(self.root)})
             elif path == "/api/artifacts":

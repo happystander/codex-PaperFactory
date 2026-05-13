@@ -68,6 +68,8 @@ def main() -> int:
             assert "标准记忆" in index
             assert "formatMessageTime" in index
             assert "时间 ${time}" in index
+            assert "运行时控制" in index
+            assert "runtimeDetails" in index
 
             status = fetch_json(base + "/api/status")
             assert status["phase"]["key"] == "scope"
@@ -224,6 +226,19 @@ def main() -> int:
             assert "优先检查引用真实性" in intervention["prompt"]
             assert (root / "human_interventions.md").exists()
             assert (root / "interventions" / "patches.jsonl").exists()
+
+            runtime = fetch_json(base + "/api/runtime")
+            assert runtime["workflow"]["current_phase"] == "method_design"
+            assert runtime["workflow"]["nodes"]
+            assert runtime["queue"]["counts"]["pending"] >= 1
+            assert runtime["queue"]["next_task"]
+            assert "paper_safe_claims" in runtime["evidence"]["summary"]
+            assert runtime["control"]["decision"]["current_phase"] == "method_design"
+            assert runtime["interventions"]["pending_count"] >= 1
+            assert (root / "workflow_state.json").exists()
+            assert (root / "evidence" / "registry.json").exists()
+            assert (root / "queue" / "tasks.jsonl").exists()
+            assert (root / "control" / "stop_conditions.json").exists()
 
             memory = fetch_json(base + "/api/memory")
             assert memory["summary"] is True
