@@ -33,3 +33,16 @@ The plugin also follows the project-local auto-research pattern used in the exis
 - Paper material is assembled from saved metrics and summaries, not from chat memory.
 
 Domain-specific projects should extend the controller with their own deterministic maintenance scripts, for example shard recovery, metric summarization, cache validation, or baseline launch checks. Keep those scripts project-local and call them from Codex cycles only when their preconditions are visible in `.research/`.
+
+## Cross-Phase Memory
+
+Long runs now use a generated memory layer instead of asking Codex to reread arbitrary old context. The design keeps the `claude-codex` file-backed state model and the local auto-research pattern of durable summaries, then adds a structured handoff bundle:
+
+- `memory/handoff.md` is the first file the next cycle should read.
+- `memory/phase_summaries.jsonl` condenses phase reports.
+- `memory/artifact_index.json` shows active artifacts without indexing logs, progress feeds, generated memory, or cleanup archives.
+- `memory/decision_memory.json` carries route decisions and phase history across jumps.
+- `memory/risk_memory.json` keeps unresolved risks visible after phase changes.
+- `memory/claim_memory.json` points writing stages back to claim/evidence artifacts.
+
+The source of truth remains the phase report and artifact files. Generated memory can be refreshed with `paperfactory memory`; it should not be manually edited as the canonical record.

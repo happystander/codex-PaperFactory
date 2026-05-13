@@ -33,6 +33,8 @@ def main() -> int:
         assert proc.returncode == 0, proc.stderr
         assert (rd / "state.json").exists()
         assert (rd / "archive" / "cleanup").is_dir()
+        assert (rd / "memory" / "handoff.md").exists()
+        assert (rd / "memory" / "artifact_index.json").exists()
         (rd / "workflow.json").write_text(
             json.dumps(
                 {
@@ -60,6 +62,8 @@ def main() -> int:
         assert proc.returncode == 0, proc.stderr
         assert "cleanup pass" in proc.stdout
         assert ".research/archive/cleanup/scope/" in proc.stdout
+        assert ".research/memory/handoff.md" in proc.stdout
+        assert "Memory Contract" in (rd / "memory" / "handoff.md").read_text(encoding="utf-8")
 
         proc = run(["--research-dir", str(rd), "advance"], cwd)
         assert proc.returncode == 1
@@ -76,6 +80,13 @@ def main() -> int:
         assert proc.returncode == 0, proc.stderr
         state = json.loads((rd / "state.json").read_text(encoding="utf-8"))
         assert state["phase"] == "custom_protocol_review"
+        assert "scope" in (rd / "memory" / "phase_summaries.jsonl").read_text(encoding="utf-8")
+
+        proc = run(["--research-dir", str(rd), "memory", "--json"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        memory_payload = json.loads(proc.stdout)
+        assert memory_payload["reports"] == 1
+        assert memory_payload["artifacts"] >= 3
 
         proc = run(["--research-dir", str(rd), "next-prompt"], cwd)
         assert proc.returncode == 0, proc.stderr

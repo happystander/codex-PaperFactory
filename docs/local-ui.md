@@ -47,7 +47,7 @@ It provides:
 - Codex status monitoring from `~/.codex/sessions`, including active-session quota, reset time, context window, and token usage;
 - Codex-authored natural-language progress from `.research/progress/feed.jsonl`; the chat area does not synthesize progress or render raw logs;
 - cycle count, interval, and optional run-duration controls;
-- friendly memory profiles for light, standard, deep, and clean-start modes, plus advanced switches for summary, logs, human interventions, and current artifacts;
+- friendly memory profiles for light, standard, deep, and clean-start modes. Every mode starts from the generated `.research/memory/handoff.md`; stronger modes add phase summaries, artifact index, decision/risk memory, claim/evidence notes, logs, and current artifacts;
 - human intervention messages saved to `.research/human_interventions.md` and injected into the next generated prompt;
 - task editing that updates both `.research/task.md` and `.research/state.json`;
 - artifact browsing with full-page preview for text, image, SVG, and PDF files under `.research/`;
@@ -58,6 +58,14 @@ It provides:
 For a non-destructive UI test, enable `Dry run` before clicking `Start`. Dry-run mode refreshes prompts without invoking `codex exec`.
 
 Human intervention takes effect on the next cycle. To force an immediate course correction, pause the background process, send the intervention, then start a new cycle.
+
+The generated cross-phase memory bundle can be refreshed manually:
+
+```bash
+/path/to/codex-PaperFactory/paperfactory memory
+```
+
+It writes `.research/memory/handoff.md`, `phase_summaries.jsonl`, `artifact_index.json`, `decision_memory.json`, `risk_memory.json`, and `claim_memory.json`. This is the handoff layer between stages; Codex should persist important findings in artifacts and reports so this bundle can carry them into later cycles.
 
 The user-facing progress feed is:
 

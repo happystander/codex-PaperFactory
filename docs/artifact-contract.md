@@ -44,6 +44,19 @@ Optional route decisions:
 
 The base workflow is locked. `.research/workflow.json` stores only user-inserted custom phases, each with a prompt and default artifacts under `.research/custom/` plus `.research/reports/<custom_phase>.json`.
 
+The controller also generates a cross-phase memory bundle under `.research/memory/` whenever a prompt is generated, a project is initialized, a phase advances, or `paperfactory memory` is run:
+
+| File | Purpose |
+| --- | --- |
+| `memory/handoff.md` | Human-readable entry point for the next Codex cycle: current gate, recent outcomes, route history, risks, important artifacts, and claim/evidence notes. |
+| `memory/phase_summaries.jsonl` | Compact JSONL records distilled from phase reports. |
+| `memory/artifact_index.json` | Deterministic index of active `.research/` artifacts, excluding logs, progress feeds, archives, and memory files. |
+| `memory/decision_memory.json` | Controller route history and report route decisions. |
+| `memory/risk_memory.json` | Risks and non-complete report statuses that should not be lost across phases. |
+| `memory/claim_memory.json` | Pointers and excerpts from claim/evidence files such as `paper/claim_evidence_map.md`, `results/main_results.md`, and `method/atomic_concepts.md`. |
+
+These files are generated from durable artifacts. Do not edit them as the source of truth; update the phase report, result artifact, or paper file that feeds them.
+
 Every phase should finish with a cleanup pass. Remove only obvious temporary files, caches, duplicate drafts, empty files, and obsolete scratch outputs created by that phase. When a file may have evidence or reproducibility value, move it to `.research/archive/cleanup/<phase>/` instead of deleting it, and record the reason in the phase report `cleanup` object.
 
 Core artifact rules:

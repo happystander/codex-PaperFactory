@@ -532,6 +532,10 @@ def command_log(args: argparse.Namespace) -> int:
     return researchctl.command_log(args)
 
 
+def command_memory(args: argparse.Namespace) -> int:
+    return researchctl.command_memory(argparse.Namespace(research_dir=args.research_dir, json=args.json))
+
+
 def command_web(args: argparse.Namespace) -> int:
     cmd = [
         sys.executable,
@@ -809,6 +813,11 @@ def build_parser() -> argparse.ArgumentParser:
     log.add_argument("--blocker")
     log.add_argument("--next")
     log.set_defaults(func=command_log)
+
+    memory = sub.add_parser("memory", help="Refresh the generated cross-phase memory bundle")
+    add_research_dir_arg(memory)
+    memory.add_argument("--json", action="store_true", help="Emit machine-readable refresh summary")
+    memory.set_defaults(func=command_memory)
 
     web = sub.add_parser("web", help="Start the interactive local Web UI")
     add_research_dir_arg(web)

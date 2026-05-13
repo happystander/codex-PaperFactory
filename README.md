@@ -16,9 +16,11 @@ It is designed for multi-day work: every phase writes durable files under `.rese
 flowchart LR
     U["User research task"] --> PF["paperfactory new"]
     PF --> R[".research/ durable state"]
-    R --> P["Phase prompt"]
+    R --> M["Generated memory bundle"]
+    M --> P["Phase prompt"]
     P --> C["codex exec"]
     C --> A["Artifacts, logs, figures, paper files"]
+    A --> M
     A --> G{"Gate passed?"}
     G -- "no: repeat / jump back" --> P
     G -- "yes: advance / skip / jump" --> N["Next phase"]
@@ -34,6 +36,7 @@ flowchart LR
 | Area | What PaperFactory Provides |
 | --- | --- |
 | Long-running research | Recoverable `.research/` state, phase reports, audit logs, and resumable cycles. |
+| Memory transfer | Generated `.research/memory/` handoff, artifact index, phase summaries, route decisions, risks, and claim/evidence notes. |
 | Quality gates | Fixed base workflow with explicit required artifacts before advancement. |
 | Human control | Chinese Web UI for start/pause, status, file preview, memory mode, custom phases, and intervention notes. |
 | Codex visibility | Codex-authored natural-language progress feed, Codex status, PID, last activity, and token/quota snapshot when available. |
@@ -224,7 +227,7 @@ paperfactory web --open
 | Workflow | Shows base phases, lets users insert custom phases, and opens phase pages. |
 | Progress chat | Displays Codex-authored natural-language updates from `.research/progress/feed.jsonl`. |
 | Intervention box | Adds user instructions for the next cycle. |
-| Memory | Chooses light, standard, deep, clean-start, or custom prompt memory sources. |
+| Memory | Chooses how much of the generated memory bundle and source artifacts the next Codex cycle reads. |
 
 ### Command Reference
 
@@ -236,6 +239,7 @@ paperfactory web --open
 | `paperfactory run --once` | Run one Codex cycle. |
 | `paperfactory run --until "YYYY-MM-DD HH:MM:SS" --interval 1800` | Run unattended cycles. |
 | `paperfactory advance` | Advance only if current phase artifacts and report pass. |
+| `paperfactory memory` | Refresh `.research/memory/` handoff, indexes, decision/risk memory, and claim notes. |
 | `paperfactory validate` | Validate state and phase reports. |
 | `paperfactory web --open` | Start the interactive Web UI. |
 | `paperfactory dashboard --open` | Generate static HTML dashboard. |
@@ -254,6 +258,7 @@ paperfactory web --open
   task.md
   human_interventions.md
   progress/feed.jsonl
+  memory/
   logs/
   reports/
   pages/
@@ -346,9 +351,11 @@ Codex PaperFactory 是一个面向 Codex 的长期科研自动化插件和本地
 flowchart LR
     U["用户研究任务"] --> PF["paperfactory new"]
     PF --> R[".research/ 持久状态"]
-    R --> P["阶段 Prompt"]
+    R --> M["自动生成记忆包"]
+    M --> P["阶段 Prompt"]
     P --> C["codex exec"]
     C --> A["产物、日志、图表、论文文件"]
+    A --> M
     A --> G{"阶段门禁通过?"}
     G -- "否：重做 / 跳回" --> P
     G -- "是：前进 / 跳过 / 跳转" --> N["下一阶段"]
@@ -364,6 +371,7 @@ flowchart LR
 | 模块 | 说明 |
 | --- | --- |
 | 长期运行 | 用 `.research/` 保存状态、阶段报告、审计日志和可恢复循环。 |
+| 记忆传输 | 自动生成 `.research/memory/`：阶段交接、产物索引、阶段摘要、跳转决策、风险和 claim/evidence 线索。 |
 | 质量门禁 | 固定主干工作流，每阶段必须产生必要产物才能推进。 |
 | 人工控制 | 中文 Web UI 支持启动/暂停、状态查看、文件预览、记忆模式、自定义阶段和人工介入。 |
 | Codex 可视化 | 展示 Codex 自己写入的自然语言进展、运行 PID、最后活动、Codex 状态和余量。 |
@@ -554,7 +562,7 @@ paperfactory web --open
 | 流程 | 展示基础阶段，插入自定义阶段，打开阶段展示页。 |
 | 进展聊天 | 展示 Codex 自己写入的自然语言进展。 |
 | 人工介入 | 给下一轮 Codex 添加新要求。 |
-| 记忆 | 选择轻量、标准、深度、干净启动或自定义记忆来源。 |
+| 记忆 | 选择下一轮 Codex 读取多少自动记忆包和源产物。 |
 
 ### 命令表
 
@@ -566,6 +574,7 @@ paperfactory web --open
 | `paperfactory run --once` | 运行一轮 Codex。 |
 | `paperfactory run --until "YYYY-MM-DD HH:MM:SS" --interval 1800` | 无人值守循环运行。 |
 | `paperfactory advance` | 当前阶段产物和报告通过后才推进。 |
+| `paperfactory memory` | 刷新 `.research/memory/` 阶段交接、索引、决策/风险记忆和 claim 线索。 |
 | `paperfactory validate` | 校验状态和阶段报告。 |
 | `paperfactory web --open` | 启动交互式 Web UI。 |
 | `paperfactory dashboard --open` | 生成静态 HTML dashboard。 |
@@ -584,6 +593,7 @@ paperfactory web --open
   task.md
   human_interventions.md
   progress/feed.jsonl
+  memory/
   logs/
   reports/
   pages/
