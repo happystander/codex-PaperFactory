@@ -88,7 +88,7 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 7. `advanced_comparison`: 公平比较高级 baseline 或官方 checkpoint。
 8. `paper_evidence`: 整理主结果、消融、鲁棒性、失败边界、复现信息，并用 `scientific-figure` 规划论文图，用 `drawio-academic-skills` 生成可编辑结构图 bundle 和 source-data manifest。
 9. `paper_drafting`: 只基于已有证据写论文和 appendix，同时生成写作 issue 合同、LaTeX/BibTeX 源文件，并用 `conference-paper-writing` 与 `latex-paper-skills` 控制论文表达。
-10. `internal_review`: 以审稿人视角检查创新性、证据、公平性、复现性和 LaTeX QA。
+10. `internal_review`: 以审稿人视角检查创新性、证据、公平性、复现性、LaTeX QA 和 KLC 风格最终格式自查。
 
 每个阶段必须写 `.research/reports/<phase>.json`。只有当 `status` 为 `complete` 且必需产物存在时，控制器才会推进到下一阶段。
 
@@ -115,10 +115,13 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 
 - `scientific-figure`: 在 `paper_evidence` 阶段规划论文图、source data、caption 和导出格式。
 - `drawio-academic-skills`: 来自 `drawio-skills`，用于论文架构图、流程图、roadmap、方法图，默认保留 `.drawio + .spec.yaml + .arch.json + .svg` 可编辑 bundle。
+- `best-paper-writing-reference`: 准备 ICLR、NeurIPS、ICML、ACL、AAAI 获奖论文 PDF/LaTeX 缓存，用于参考实验设计、结构、图表、限制和附录策略。
 - `conference-paper-writing`: 在 `paper_drafting` 和 `internal_review` 阶段把证据转成会议论文表述、表格、限制和复现说明。
+- `conference-page-budget`: 专门处理 8 页双栏、9 页单栏和 appendix 的版式预算、主文/附录分配和删减决策。
 - `paper-reader`: 在 `survey` 阶段做有 source anchor 的论文精读笔记。
 - `citation-workflow`: 管理 BibTeX/Zotero 导出的文献库，做 claim-to-citation 支撑映射。
 - `latex-typst-paper`: 检查 LaTeX/Typst 源码、引用、图表、伪代码、标签和投稿格式。
+- `paper-format-self-check`: 来自 KLC 论文写作自查，用于最终源码/PDF 格式检查，包括引号、i.e./e.g.、参考文献版本、Figure/Table 断行、图表可读性、附录目录和裁剪空白。
 - `academic-polishing`: 中英文论文润色、翻译、标题摘要优化和去 AI 腔。
 - `data-availability`: 写数据/代码/模型可用性声明、FAIR 元数据和 source data 清单。
 - `manuscript-audit`: 做审稿人式内审、投稿 gate 和 revision roadmap。

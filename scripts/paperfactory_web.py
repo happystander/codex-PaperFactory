@@ -957,12 +957,13 @@ Write the review to: {output}
 
 Instructions:
 - Read .research/state.json, .research/task.md, .research/logs/research.log, and available paper/evidence artifacts before reviewing.
-- Run the bundled manuscript checker when the draft is Markdown, LaTeX, or Typst.
+- Run the bundled manuscript checker when the draft is Markdown, LaTeX, or Typst, and apply paper-format-self-check for KLC-style final source/PDF hygiene.
 - Review as a top-conference area reviewer: novelty, related work, method clarity, experimental protocol, baseline fairness, statistics, ablations, limitations, reproducibility, ethics, and claim support.
 - Do not rewrite the paper. Produce a decision-oriented review and required revision roadmap.
 - Do not invent missing experiments, citations, line numbers, metrics, or reviewer consensus.
 - Mark each issue as blocker, major, moderate, or minor.
 - Include concrete fixes and whether new experiments are required.
+- Include format/PDF blockers such as smart quotes, malformed i.e./e.g., noisy BibTeX venue fields, arXiv citations for published work, breakable Figure/Table references, unreadable axes, table overflow, loose lists, missing appendix navigation, or excessive figure whitespace.
 - If the paper is not ready, set the verdict to NEEDS_MORE_WORK or FAIL.
 
 Output contract:

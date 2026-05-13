@@ -201,6 +201,7 @@ PHASES: tuple[Phase, ...] = (
         objective="Draft a paper and appendix from existing evidence only.",
         required=(
             "paper/claim_evidence_map.md",
+            "paper/page_budget.md",
             "paper/writing_issues.csv",
             "paper/paper_draft.md",
             "paper/main.tex",
@@ -212,11 +213,13 @@ PHASES: tuple[Phase, ...] = (
         gate="Draft cites artifact-backed evidence for each main claim and includes limitations and reproducibility details.",
         prompt_focus=(
             "Use the conference-paper-writing skill to build a claim-to-evidence map before prose.",
+            "Use conference-page-budget before drafting main prose: choose 8p-double, 9p-single, or appendix mode; write paper/page_budget.md; map main-vs-appendix content.",
             "Use latex-paper-skills when available: paper-from-zero for routing, empirical-paper-writer for experimental papers, arxiv-paper-writer for review papers, results-backfill for verified result upgrades, and latex-rhythm-refiner after content stabilizes.",
             "Create an issues-style writing contract in paper/writing_issues.csv; track section tasks, dependencies, citation verification, evidence status, and placeholder/result status.",
             "Use citation-workflow for citation support checks, data-availability for availability wording, and academic-polishing for final language passes.",
             "Draft section-by-section with checkpoints: methodology, related work, experiments, introduction, conclusion, then abstract.",
             "Produce LaTeX source and BibTeX alongside the Markdown draft; compile or record why compilation is unavailable.",
+            "Use templates/conference_papers/8p_double_column_main.tex, 9p_single_column_main.tex, or appendix.tex as the starting layout when no venue-specific template is supplied.",
             "Write from claims to evidence: every main claim needs a table, figure, theorem, or appendix artifact.",
             "Use cautious language for bounded or diagnostic evidence.",
             "Do not invent citations, results, or unavailable baselines.",
@@ -230,6 +233,7 @@ PHASES: tuple[Phase, ...] = (
             "reviews/internal_review.md",
             "reviews/top_conference_review.md",
             "paper/latex_qa.md",
+            "paper/format_self_check.md",
             "paper/camera_ready_checklist.md",
             "reports/internal_review.json",
         ),
@@ -239,6 +243,7 @@ PHASES: tuple[Phase, ...] = (
             "Audit every atomic concept against the implemented code, ablations, and paper claims.",
             "Use manuscript-audit as a top-conference reviewer after paper_drafting is complete, and write reviews/top_conference_review.md.",
             "Use latex-paper-skills QA where available: issue_workflow audit, citation_policy audit-bib/audit-tex, source_ranker, style_profile, compile_paper, and record results in paper/latex_qa.md.",
+            "Use paper-format-self-check for KLC-style final source/PDF hygiene: quotes, i.e./e.g., BibTeX venue cleanup, published-version citations, nonbreaking references, figure/table readability, appendix navigation, list spacing, and cropping.",
             "Run latex-rhythm-refiner only after claim support, citations, and numbers are stable; preserve citation positions and verified numeric claims.",
             "Check whether a stronger baseline would invalidate the main claim.",
             "If blockers remain, set report status to needs_more_work and route back manually in the summary.",
@@ -741,12 +746,14 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     companion_skills = []
     if phase.key in {"survey", "data_sanity", "method_design", "method_smoke", "advanced_comparison"}:
         companion_skills.append("auto-research")
+    if phase.key in {"method_design", "paper_evidence", "paper_drafting", "internal_review"}:
+        companion_skills.append("best-paper-writing-reference")
     if phase.key == "survey":
         companion_skills.extend(["paper-reader", "citation-workflow"])
     if phase.key == "paper_evidence":
         companion_skills.extend(["scientific-figure", "drawio-academic-skills", "citation-workflow", "data-availability"])
     if phase.key in {"paper_drafting", "internal_review"}:
-        companion_skills.append("conference-paper-writing")
+        companion_skills.extend(["conference-paper-writing", "conference-page-budget"])
     if phase.key == "paper_drafting":
         companion_skills.extend(
             [
@@ -757,6 +764,7 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
                 "latex-rhythm-refiner",
                 "academic-polishing",
                 "latex-typst-paper",
+                "paper-format-self-check",
                 "citation-workflow",
                 "data-availability",
             ]
@@ -765,6 +773,7 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
         companion_skills.extend(
             [
                 "manuscript-audit",
+                "paper-format-self-check",
                 "latex-rhythm-refiner",
                 "arxiv-paper-writer",
                 "empirical-paper-writer",
@@ -799,18 +808,22 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
             "Use MLflow to compare runs and checkpoint metadata when available; keep released-checkpoint provenance and evaluation commands explicit.",
             "Use DVC/git-lfs or checksummed manifests for large checkpoints and result artifacts.",
             "Use Snakemake or Makefile targets for multi-step fair-comparison pipelines.",
+            "When designing final comparison evidence, inspect the curated award-paper references for baseline tiers, ablation structure, and failure-boundary reporting.",
         ),
         "paper_evidence": (
             "Use the local plotting helper plus scientific-figure/drawio skills for figures; preserve raw figure source data and exact plotting commands.",
             "Keep every table and figure backed by a source JSON/CSV/Markdown manifest so claims are traceable.",
+            "Compare figure/table roles against docs/best-paper-writing-references.md and write reusable patterns to .research/paper/best_paper_style_notes.md.",
         ),
         "paper_drafting": (
             "Compile with latexmk, pdflatex, biber, bibtex, tectonic, or pandoc when available; save build commands and failure logs in paper/latex_qa.md.",
             "Use Crossref/arXiv/OpenAlex metadata checks for uncertain bibliography entries rather than inventing fields.",
+            "Use curated award-paper references for structure and page-budget decisions; summarize patterns, do not copy text.",
         ),
         "internal_review": (
             "Re-run available LaTeX/BibTeX build tools and citation metadata checks before final review.",
             "Audit whether experiment tracking, data versioning, and workflow commands are sufficient for another researcher to reproduce the claims.",
+            "Compare the draft against curated award-paper standards for experiment coverage, limitations, appendix strategy, and figure/table readability.",
         ),
     }
     open_tool_guidance = open_tool_guidance_by_phase.get(

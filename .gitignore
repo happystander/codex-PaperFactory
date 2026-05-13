@@ -9,3 +9,5 @@ logs/
 tmp/
 *.tmp
 *.log
+reference_papers/cache/
+skills/paper-format-self-check/*.pdf

@@ -174,7 +174,7 @@ The base workflow is locked. Users can insert custom phases, but they cannot del
 | 7 | `advanced_comparison` | Compare fairly against strong baselines, released checkpoints, or justified reproductions. | `reports/advanced_comparison.json` |
 | 8 | `paper_evidence` | Assemble results, ablations, failure cases, analysis, figures, Draw.io bundles. | `reports/paper_evidence.json` |
 | 9 | `paper_drafting` | Draft Markdown/LaTeX/BibTeX paper only from supported evidence. | `reports/paper_drafting.json` |
-| 10 | `internal_review` | Act as a top-conference reviewer and audit novelty, evidence, fairness, reproducibility, LaTeX QA. | `reports/internal_review.json` |
+| 10 | `internal_review` | Act as a top-conference reviewer and audit novelty, evidence, fairness, reproducibility, LaTeX QA, and final format hygiene. | `reports/internal_review.json` |
 
 ### Custom Phases and Routing
 
@@ -243,6 +243,7 @@ paperfactory web --open
 | `paperfactory bib -- ...` | Search local BibTeX/Zotero-exported references. |
 | `paperfactory check -- paper/paper_draft.md --format markdown` | Run manuscript hygiene checks. |
 | `paperfactory plot -- ...` | Generate paper-style metric plots. |
+| `paperfactory fetch-refs -- --pdf-only` | Download curated award-paper references into the ignored local cache. |
 
 ### Artifact Layout
 
@@ -278,8 +279,11 @@ paperfactory web --open
 | `citation-workflow` | Citation search, support mapping, BibTeX/LaTeX snippets. |
 | `scientific-figure` | Figure planning, source-data manifests, plot QA. |
 | `drawio-academic-skills` | Editable method/workflow/architecture diagram bundles. |
+| `best-paper-writing-reference` | Curated ICLR/NeurIPS/ICML/ACL/AAAI award-paper references for experiment and writing patterns. |
 | `conference-paper-writing` | Evidence-grounded conference paper drafting. |
+| `conference-page-budget` | 8-page double-column, 9-page single-column, and appendix page-budget planning. |
 | `latex-typst-paper` | Manuscript source checks. |
+| `paper-format-self-check` | KLC-style final source/PDF submission hygiene. |
 | `manuscript-audit` | Top-conference-style internal review. |
 | `paper-from-zero`, `empirical-paper-writer`, `arxiv-paper-writer`, `results-backfill`, `latex-rhythm-refiner` | Optional external writing workflow from `latex-paper-skills`. |
 
@@ -500,7 +504,7 @@ Web UI 启动的后台任务会把输出写入 `.research/logs/`。
 | 7 | `advanced_comparison` | 和强基线、官方 checkpoint 或合理复现做公平比较。 | `reports/advanced_comparison.json` |
 | 8 | `paper_evidence` | 整理结果、消融、失败案例、分析、科研图和 Draw.io bundle。 | `reports/paper_evidence.json` |
 | 9 | `paper_drafting` | 只基于已有证据写 Markdown/LaTeX/BibTeX 论文。 | `reports/paper_drafting.json` |
-| 10 | `internal_review` | 扮演顶会审稿人检查创新性、证据、公平性、复现性和 LaTeX QA。 | `reports/internal_review.json` |
+| 10 | `internal_review` | 扮演顶会审稿人检查创新性、证据、公平性、复现性、LaTeX QA 和最终格式自查。 | `reports/internal_review.json` |
 
 ### 自定义阶段与跳转
 
@@ -569,6 +573,7 @@ paperfactory web --open
 | `paperfactory bib -- ...` | 搜索本地 BibTeX/Zotero 文献库。 |
 | `paperfactory check -- paper/paper_draft.md --format markdown` | 做论文卫生检查。 |
 | `paperfactory plot -- ...` | 生成论文风格指标图。 |
+| `paperfactory fetch-refs -- --pdf-only` | 下载获奖论文参考到本地忽略缓存。 |
 
 ### 产物目录
 
@@ -604,8 +609,11 @@ paperfactory web --open
 | `citation-workflow` | 引用搜索、claim 支撑映射、BibTeX/LaTeX 片段。 |
 | `scientific-figure` | 图表规划、source-data manifest、绘图 QA。 |
 | `drawio-academic-skills` | 可编辑的方法图、流程图、架构图 bundle。 |
+| `best-paper-writing-reference` | ICLR/NeurIPS/ICML/ACL/AAAI 获奖论文参考库，用于实验设计和写作结构。 |
 | `conference-paper-writing` | 基于证据的会议论文写作。 |
+| `conference-page-budget` | 8 页双栏、9 页单栏和附录的页数预算规划。 |
 | `latex-typst-paper` | LaTeX/Typst 源文件检查。 |
+| `paper-format-self-check` | KLC 风格最终源码/PDF 投稿格式自查。 |
 | `manuscript-audit` | 顶会审稿式内部审查。 |
 | `paper-from-zero`, `empirical-paper-writer`, `arxiv-paper-writer`, `results-backfill`, `latex-rhythm-refiner` | 来自 `latex-paper-skills` 的可选写作流程。 |
 

@@ -43,6 +43,15 @@ def line_findings(text: str, terms: list[str], kind: str) -> list[dict]:
     return findings
 
 
+def regex_line_findings(text: str, patterns: list[tuple[str, str]], kind: str) -> list[dict]:
+    findings = []
+    for line_no, line in enumerate(text.splitlines(), 1):
+        for term, pattern in patterns:
+            if re.search(pattern, line):
+                findings.append({"kind": kind, "line": line_no, "term": term, "text": line.strip()[:180]})
+    return findings
+
+
 def check_structure(text: str) -> list[dict]:
     headings = [line.strip("# ").strip().lower() for line in text.splitlines() if line.lstrip().startswith("#")]
     findings = []
@@ -59,6 +68,37 @@ def check_latex_refs(text: str) -> list[dict]:
     refs = set(re.findall(r"\\(?:ref|autoref|cref)\{([^}]+)\}", text))
     for ref in sorted(refs - labels):
         findings.append({"kind": "latex-ref", "line": None, "term": ref, "text": "Reference without matching label"})
+    return findings
+
+
+def check_submission_hygiene(text: str, fmt: str) -> list[dict]:
+    findings: list[dict] = []
+    findings.extend(
+        regex_line_findings(
+            text,
+            [
+                ("smart quote", r"[“”‘’]"),
+                ("malformed i.e./e.g.", r"\b(?:i\s+e|ie|eg)\s*\.|i\.e(?!\.,)|e\.g(?!\.,)"),
+                ("missing prose space before parenthesis", r"(?<!\\)\b[A-Za-z][A-Za-z0-9]*\([^)]{2,}"),
+            ],
+            "format-hygiene",
+        )
+    )
+    if fmt == "latex":
+        findings.extend(
+            regex_line_findings(
+                text,
+                [
+                    ("breaking figure/table reference", r"\b(?:Figure|Fig\.|Table|Section|Sec\.|Equation|Eq\.)\s+\\(?:ref|autoref|cref)\{"),
+                    ("raw resizebox", r"\\resizebox\{"),
+                    ("loose itemize", r"\\begin\{itemize\}(?!\[)"),
+                    ("heading ends with period", r"\\(?:section|subsection|subsubsection)\*?\{[^}]*\.\}"),
+                    ("arXiv preprint bibliography", r"arXiv preprint|journal\s*=\s*\{arXiv"),
+                    ("noisy booktitle date/location", r"booktitle\s*=\s*\{[^}]*\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Vienna|Seattle|Vancouver|Honolulu|Singapore)\b"),
+                ],
+                "latex-format",
+            )
+        )
     return findings
 
 
@@ -81,6 +121,7 @@ def main() -> int:
     findings.extend(line_findings(text, AI_TONE, "ai-tone"))
     findings.extend(line_findings(text, OVERCLAIM, "overclaim"))
     findings.extend(check_structure(text))
+    findings.extend(check_submission_hygiene(text, fmt))
     if fmt == "latex":
         findings.extend(check_latex_refs(text))
     result = {"paper": str(path), "format": fmt, "finding_count": len(findings), "findings": findings}

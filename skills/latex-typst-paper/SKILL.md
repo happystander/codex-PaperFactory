@@ -22,6 +22,7 @@ Choose the smallest matching module:
 | `format` | venue compliance, page limits, fonts, margins |
 | `figures` | figure paths, extensions, captions, source-data notes |
 | `tables` | booktabs/three-line table, table clarity, metric captions |
+| `format-self-check` | KLC-style final PDF/source hygiene: quotes, abbreviation punctuation, nonbreaking refs, appendix navigation, table overflow, and figure cropping |
 | `pseudocode` | algorithm floats, algorithmic/algorithm2e/Typst algorithm blocks |
 | `grammar` | surface language fixes |
 | `sentences` | long or dense sentence diagnostics |
@@ -44,6 +45,18 @@ When multiple modules apply:
 - Prefer review comments and patchable suggestions before broad rewrites.
 - Keep compile diagnostics separate from prose edits.
 - Report exact commands and exit codes when running build tools.
+
+## Final Format Self-Check
+
+When the paper is near submission, apply `paper-format-self-check` in addition to build checks:
+
+- replace smart quotes with LaTeX quote syntax in `.tex`;
+- use `i.e.,` and `e.g.,` consistently;
+- use nonbreaking references such as `Table~\ref{...}` and `Figure~\ref{...}`;
+- manually clean noisy BibTeX `booktitle` fields and avoid citing arXiv preprints when a published version exists;
+- use `\resizebox` only for genuinely overflowing tables;
+- tighten loose `itemize` spacing with venue-safe `enumitem` options when needed;
+- inspect the rendered PDF for one-word lines, tiny figure axes, table overflow, long appendix navigation, and excessive figure whitespace.
 
 ## Output Style
 

@@ -60,11 +60,14 @@ Typography and export:
 
 Axes and legends:
 
+- Check the final placed size, not only the standalone image. Axis labels, ticks, legends, and annotations must remain readable after the figure is shrunk into the paper.
 - Use direct labels when category positions are stable.
 - Keep legends frameless and compact.
 - Avoid 3D bars, heavy backgrounds, rainbow palettes, and decorative gradients.
 - Use color and line style together when categories must survive grayscale printing.
+- For bar charts, use color plus hatch, marker, shape, direct labels, or another non-color cue when categories could be confused in print.
 - Do not truncate axes unless the caption and visual encoding make the truncation explicit.
+- Crop excessive whitespace around exported figures so the visual evidence is not artificially small in the paper.
 
 Color defaults:
 

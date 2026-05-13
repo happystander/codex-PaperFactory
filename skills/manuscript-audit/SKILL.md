@@ -18,6 +18,7 @@ Condensed from:
 - `paper-audit`: deep-review-first audit, gate decisions, issue bundles, committee lenses.
 - `latex-paper-en` and `typst-paper`: source-aware checks.
 - `conference-paper-writing`: claim-to-evidence discipline.
+- `KLC论文写作自查`: final submission format and rendered-PDF hygiene.
 
 ## Modes
 
@@ -35,6 +36,7 @@ Run all by default unless the prompt narrows scope:
 3. Literature: synthesis vs paper list, fair gap, missing baselines.
 4. Methodology: data, protocol, statistics, implementation transparency.
 5. Logic/evidence: claims, tables/figures, limitations, reproducibility.
+6. Format/PDF hygiene: quotes, abbreviations, BibTeX venue consistency, published-version citations, nonbreaking references, table overflow, figure readability, appendix navigation, list spacing, and figure cropping.
 
 ## Output Contract
 
@@ -80,6 +82,8 @@ python <PLUGIN_ROOT>/scripts/manuscript_check.py main.typ --format typst
 ```
 
 Treat script output as mechanical evidence, not as the final review.
+
+When a draft is near submission, also apply `paper-format-self-check` and write or verify `.research/paper/format_self_check.md`.
 
 ## Red Lines
 

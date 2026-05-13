@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "description": "Curated CCF-A/top AI conference award papers for experiment-design and writing-style reference. PDF/source files are downloaded into an ignored local cache by scripts/fetch_best_paper_references.py.",
+  "papers": [
+    {
+      "id": "neurips_2017_attention_is_all_you_need",
+      "title": "Attention Is All You Need",
+      "venue": "NeurIPS",
+      "venue_alias": "NIPS",
+      "year": 2017,
+      "award": "Best Paper / influential award paper reference",
+      "arxiv_id": "1706.03762",
+      "proceedings_url": "https://papers.nips.cc/paper/7181-attention-is-all-you-need",
+      "award_evidence_url": "https://papers.nips.cc/paper/7181-attention-is-all-you-need",
+      "pdf_url": "https://arxiv.org/pdf/1706.03762",
+      "source_url": "https://arxiv.org/e-print/1706.03762",
+      "writing_use": ["architecture figure", "ablation table", "scaling experiment", "concise method exposition"]
+    },
+    {
+      "id": "neurips_2020_language_models_are_few_shot_learners",
+      "title": "Language Models are Few-Shot Learners",
+      "venue": "NeurIPS",
+      "year": 2020,
+      "award": "Best Paper Award",
+      "arxiv_id": "2005.14165",
+      "proceedings_url": "https://proceedings.neurips.cc/paper_files/paper/2020/hash/1457c0d6bfcb4967418bfb8ac142f64a-Abstract.html",
+      "award_evidence_url": "https://blog.neurips.cc/2020/12/07/announcing-the-neurips-2020-award-recipients/",
+      "pdf_url": "https://arxiv.org/pdf/2005.14165",
+      "source_url": "https://arxiv.org/e-print/2005.14165",
+      "writing_use": ["large-scale experiment reporting", "limitations", "broader impact", "appendix-heavy evidence"]
+    },
+    {
+      "id": "iclr_2017_rethinking_generalization",
+      "title": "Understanding Deep Learning Requires Rethinking Generalization",
+      "venue": "ICLR",
+      "year": 2017,
+      "award": "Best Paper Award",
+      "arxiv_id": "1611.03530",
+      "proceedings_url": "https://openreview.net/forum?id=Sy8gdB9xx",
+      "award_evidence_url": "https://iclr.cc/archive/www/lib/exe/fetch.php%3Fmedia%3Diclr2017%3Aranzato_introduction_iclr2017.pdf",
+      "pdf_url": "https://arxiv.org/pdf/1611.03530",
+      "source_url": "https://arxiv.org/e-print/1611.03530",
+      "writing_use": ["hypothesis-driven experiments", "surprising empirical finding", "figure-led argument", "bounded theory claim"]
+    },
+    {
+      "id": "icml_2017_influence_functions",
+      "title": "Understanding Black-box Predictions via Influence Functions",
+      "venue": "ICML",
+      "year": 2017,
+      "award": "Best Paper Award",
+      "arxiv_id": "1703.04730",
+      "proceedings_url": "https://proceedings.mlr.press/v70/koh17a.html",
+      "award_evidence_url": "https://icml.cc/Conferences/2017/Awards",
+      "pdf_url": "https://arxiv.org/pdf/1703.04730",
+      "source_url": "https://arxiv.org/e-print/1703.04730",
+      "writing_use": ["method motivation", "case studies", "diagnostic experiments", "theory-to-practice bridge"]
+    },
+    {
+      "id": "acl_2020_climbing_towards_nlu",
+      "title": "Climbing towards NLU: On Meaning, Form, and Understanding in the Age of Data",
+      "venue": "ACL",
+      "year": 2020,
+      "award": "Best Theme Paper",
+      "arxiv_id": "2004.03061",
+      "proceedings_url": "https://aclanthology.org/2020.acl-main.463/",
+      "award_evidence_url": "https://acl2020.org/blog/ACL-2020-best-papers/",
+      "pdf_url": "https://arxiv.org/pdf/2004.03061",
+      "source_url": "https://arxiv.org/e-print/2004.03061",
+      "writing_use": ["position-paper argument", "definitions", "field critique", "claim scoping"]
+    },
+    {
+      "id": "acl_2021_vocabulary_learning_optimal_transport",
+      "title": "Vocabulary Learning via Optimal Transport for Neural Machine Translation",
+      "venue": "ACL-IJCNLP",
+      "venue_alias": "ACL",
+      "year": 2021,
+      "award": "Best Paper",
+      "arxiv_id": "2012.15671",
+      "proceedings_url": "https://aclanthology.org/2021.acl-long.571/",
+      "award_evidence_url": "https://2021.aclweb.org/program/accept/",
+      "pdf_url": "https://arxiv.org/pdf/2012.15671",
+      "source_url": "https://arxiv.org/e-print/2012.15671",
+      "writing_use": ["efficiency experiment", "main result table", "algorithm framing", "code availability"]
+    },
+    {
+      "id": "aaai_2023_misspecification_irl",
+      "title": "Misspecification in Inverse Reinforcement Learning",
+      "venue": "AAAI",
+      "year": 2023,
+      "award": "Outstanding Paper Award",
+      "arxiv_id": "2212.03201",
+      "proceedings_url": "https://ojs.aaai.org/index.php/AAAI/article/view/26766",
+      "award_evidence_url": "https://aaai.org/about-aaai/aaai-awards/aaai-conference-paper-awards-and-recognition/",
+      "pdf_url": "https://arxiv.org/pdf/2212.03201",
+      "source_url": "https://arxiv.org/e-print/2212.03201",
+      "writing_use": ["formal problem setup", "theorem-driven structure", "assumption stress test", "safe AI framing"]
+    }
+  ]
+}

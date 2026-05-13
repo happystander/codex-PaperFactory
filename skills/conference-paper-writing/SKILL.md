@@ -11,17 +11,24 @@ Use this skill during `paper_evidence`, `paper_drafting`, and `internal_review` 
 
 Write from claims to evidence. Every main-text claim must point to a table, figure, theorem, experiment report, or clearly named appendix artifact. Prose interprets results; it does not serialize long metric strings.
 
+Before drafting full prose, use `conference-page-budget` to choose an 8-page double-column, 9-page single-column, or appendix layout and to write `.research/paper/page_budget.md`.
+
 ## Main-Text Policy
 
+- Use the introduction funnel: concrete puzzle or failure case -> prior approaches -> remaining gap -> proposed interface -> method sketch -> evidence. Avoid opening with broad "recent progress" claims unless the next sentence names a specific unresolved problem.
+- Every paragraph should have one job and should follow AXES: assertion, example/evidence, explanation, significance. If a paragraph only lists components, rewrite it as a design choice with a reason.
 - Lead with the strongest defensible claim and the table or figure that supports it.
 - Put main method, strongest baselines, and headline ablations in main tables.
 - Move pilot variants, failed gates, logs, hyperparameters, artifact paths, and large diagnostic grids to the appendix.
+- Remove generic AI-writing traces such as empty intensifiers, template transitions, and vague claims unless followed by a precise artifact or evidence anchor.
 - Use cautious verbs such as `mitigates`, `improves`, `supports`, or `is diagnostic` when evidence is bounded.
 - Reserve `SOTA`, `solves`, and broad superiority claims for broad, fair, protocol-matched comparisons.
 - In abstracts and introductions, include at most one compact headline number per contribution.
 - Do not repeat triples like `HR/NDCG/MRR = a/b/c` in paragraphs. Use tables.
 
 ## Tables
+
+Every main table should answer a claim, name the comparison pressure, and give the reader a decision rule. Do not make the reader infer the claim from a wall of numbers.
 
 Every result table must state:
 
@@ -38,10 +45,15 @@ Preferred table shapes:
 - Negative result: `Attempt`, `Intended Fix`, `Observed Result`, `Decision`.
 - Fairness matrix: `Baseline`, `Code`, `Checkpoint`, `Data`, `Protocol Match`, `Cost`, `Risk`.
 
+Do not put paragraph-like explanations inside cells. If a cell needs a full clause, move that material to prose or the caption.
+
+Avoid `\resizebox` in main tables when possible. Prefer `\small`, tuned `\tabcolsep`, grouped headers, short column names, and appendix tables for exhaustive grids.
+
 Bold only the best supported main result per metric. Do not bold diagnostic or non-comparable rows.
 
 ## Figures
 
+- A main method figure should be low-text and schematic: 3-4 labeled blocks, arrows, variables, and one visual motivation. Put explanation in caption/prose, not inside the figure.
 - Use figures for mechanisms, trends, tradeoffs, and failure boundaries.
 - Do not make a chart when a compact table communicates the evidence better.
 - Captions should state the takeaway and protocol, not only the plotted variables.
@@ -79,8 +91,10 @@ When drafting from `.research/`:
 
 1. Read `.research/results/main_results.md`, `.research/results/ablations.md`, `.research/results/failure_cases.md`, and `.research/figures/figure_plan.md`.
 2. Build a claim-to-evidence map before writing prose.
-3. If any intended claim lacks evidence, either move it to future work or write a blocker in `.research/reports/paper_drafting.json`.
-4. Keep paper drafts in `.research/paper/` and appendices in `.research/paper/appendix.md`.
+3. Build a page budget and main-vs-appendix map before choosing section lengths.
+4. If any intended claim lacks evidence, either move it to future work or write a blocker in `.research/reports/paper_drafting.json`.
+5. Keep paper drafts in `.research/paper/` and appendices in `.research/paper/appendix.md`.
+6. Before finalizing, hand off to `paper-format-self-check` and record remaining formatting issues in `.research/paper/format_self_check.md`.
 
 ## Source Pointers
 

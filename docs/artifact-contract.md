@@ -57,5 +57,8 @@ Core artifact rules:
 - Pair every paper figure with `.research/figures/figure_plan.md`, source data, plotting script, and `.research/figures/source_data_manifest.json`.
 - Pair every structural Draw.io diagram with `.drawio`, `.spec.yaml`, `.arch.json`, and `.svg`; track these in `.research/figures/drawio_bundle_manifest.json`.
 - Keep late-stage paper writing issue-driven: `.research/paper/writing_issues.csv` should track section tasks, dependencies, citation verification, evidence status, and result placeholder state.
+- Choose a conference page-budget mode before drafting full prose; record it in `.research/paper/page_budget.md` and map content to main text vs appendix.
+- Use curated award-paper references during method/evidence/writing planning when helpful; record structural patterns in `.research/method/best_paper_experiment_notes.md` or `.research/paper/best_paper_style_notes.md`.
 - Produce `.research/paper/main.tex` and `.research/paper/ref.bib` during `paper_drafting`; record citation, style, source, and compile checks in `.research/paper/latex_qa.md` during `internal_review`.
+- Record final KLC-style source/PDF submission hygiene in `.research/paper/format_self_check.md` during `internal_review`.
 - Mark result-backed claims as `planned`, `placeholder`, or `verified`; only verified evidence can support factual numerical claims.

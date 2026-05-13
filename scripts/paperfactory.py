@@ -601,6 +601,32 @@ def command_doctor(args: argparse.Namespace) -> int:
     except Exception:
         checks.append(("matplotlib", "WARN", "not installed; plotting helper will fail"))
 
+    local_skill_names = (
+        "academic-polishing",
+        "autonomous-research",
+        "citation-workflow",
+        "conference-paper-writing",
+        "conference-page-budget",
+        "data-availability",
+        "best-paper-writing-reference",
+        "latex-typst-paper",
+        "manuscript-audit",
+        "paper-format-self-check",
+        "paper-reader",
+        "presentation-deck",
+        "reviewer-response",
+        "scientific-figure",
+    )
+    for skill_name in local_skill_names:
+        skill_file = ROOT / "skills" / skill_name / "SKILL.md"
+        checks.append(
+            (
+                f"local:{skill_name}",
+                "OK" if skill_file.exists() else "ERROR",
+                str(skill_file) if skill_file.exists() else "missing plugin-local skill",
+            )
+        )
+
     skills_root = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "skills"
     latex_skill_names = (
         "paper-from-zero",
@@ -687,6 +713,24 @@ def command_doctor(args: argparse.Namespace) -> int:
     )
     for label, module, purpose, package in research_packages:
         append_python_package_check(checks, label, module, purpose, package=package)
+
+    reference_manifest = ROOT / "reference_papers" / "manifest.json"
+    checks.append(
+        (
+            "refs:best-paper",
+            "OK" if reference_manifest.exists() else "ERROR",
+            str(reference_manifest) if reference_manifest.exists() else "missing curated best-paper manifest",
+        )
+    )
+    reference_cache = ROOT / "reference_papers" / "cache"
+    cached_papers = sorted(reference_cache.glob("*/metadata.json")) if reference_cache.exists() else []
+    checks.append(
+        (
+            "refs:cache",
+            "OK" if cached_papers else "WARN",
+            f"{len(cached_papers)} cached paper(s); run scripts/fetch_best_paper_references.py" if cached_papers else "optional; run scripts/fetch_best_paper_references.py",
+        )
+    )
 
     for name, status, detail in checks:
         print(f"{status:5} {name:22} {detail}")
@@ -791,6 +835,10 @@ def build_parser() -> argparse.ArgumentParser:
     plot = sub.add_parser("plot", help="Run the metric plotting helper through this launcher")
     plot.add_argument("tool_args", nargs=argparse.REMAINDER)
     plot.set_defaults(func=lambda args: command_delegate("make_metric_plot.py", args.tool_args))
+
+    refs = sub.add_parser("fetch-refs", help="Download curated best-paper reference PDFs/source bundles")
+    refs.add_argument("tool_args", nargs=argparse.REMAINDER)
+    refs.set_defaults(func=lambda args: command_delegate("fetch_best_paper_references.py", args.tool_args))
     return parser
 
 

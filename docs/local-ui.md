@@ -52,7 +52,8 @@ It provides:
 - task editing that updates both `.research/task.md` and `.research/state.json`;
 - artifact browsing with full-page preview for text, image, SVG, and PDF files under `.research/`;
 - figure browsing for `.svg`, `.pdf`, `.png`, `.jpg`, `.jpeg`, and `.webp` files under `.research/figures/`;
-- automatic `manuscript-audit` review in `internal_review` after paper drafting is complete.
+- automatic `manuscript-audit` and `paper-format-self-check` review in `internal_review` after paper drafting is complete.
+- conference page-budget and curated award-paper reference prompts for late-stage writing.
 
 For a non-destructive UI test, enable `Dry run` before clicking `Start`. Dry-run mode refreshes prompts without invoking `codex exec`.
 
