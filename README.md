@@ -127,6 +127,8 @@ ssh -L 8765:127.0.0.1:8765 user@server
 
 `doctor` 把核心问题显示为 `ERROR`，把可选能力缺失显示为 `WARN`。缺少可选工具时主流程仍能跑，但文献解析、实验可复现性、绘图和论文构建能力会变弱。
 
+PaperFactory 会自动探测可用 Python 运行时，优先使用 `PAPERFACTORY_PYTHON`、`PYTHON_BIN` 或已知 Conda 环境中包含 `torch/transformers/datasets` 的解释器。后台 Codex 默认使用 host-access 模式，避免本机 GPU、localhost 代理和数据下载被 Codex sandbox 隔离；如需回到 Codex 默认隔离模式，可运行 `paperfactory run --codex-sandboxed ...`。
+
 ### 运行方式
 
 | 方式 | 命令 / 操作 | 适用场景 |
@@ -139,6 +141,8 @@ ssh -L 8765:127.0.0.1:8765 user@server
 | 手动 Prompt | `paperfactory prompt --copy` | 需要把下一轮 Prompt 手动交给 Codex 时。 |
 
 终端进程如果断开，取决于你是否使用 `tmux`、`screen`、`nohup` 或后台重定向。Web UI 的启动按钮会创建 detached 后台进程，浏览器关闭不等于任务停止。
+
+Web UI 的项目选择区支持新建、切换和删除项目。删除只允许作用于当前工作区内且已经暂停的研究项目，避免误删仍在运行的后台任务。
 
 ### 固定主干工作流
 
@@ -428,6 +432,8 @@ ln -s "$(pwd)/paperfactory" ~/.local/bin/paperfactory
 | LLM/RL frameworks | Task dependent | TRL, verl, ms-swift, etc. | `./paperfactory doctor` |
 | Writing/figure skills | Recommended | Paper writing, result backfill, prose refinement, Draw.io figures. | `./paperfactory doctor` |
 
+PaperFactory auto-detects a useful Python runtime. It prefers `PAPERFACTORY_PYTHON`, `PYTHON_BIN`, or known Conda environments that provide `torch/transformers/datasets`. Background Codex runs use host-access mode by default so local GPUs, localhost proxies, and dataset downloads are not blocked by Codex sandbox isolation. Use `paperfactory run --codex-sandboxed ...` to opt back into the normal Codex sandbox.
+
 ### Run Modes
 
 | Mode | Command / Action | Notes |
@@ -438,6 +444,8 @@ ln -s "$(pwd)/paperfactory" ~/.local/bin/paperfactory
 | Background terminal run | `paperfactory run ... > .research/logs/paperfactory-run.out 2>&1 &` | Saves terminal output. |
 | Dry run | `paperfactory run --once --dry-run` | Refreshes prompts without invoking Codex. |
 | Manual prompt | `paperfactory prompt --copy` | Copies the next prompt for manual use. |
+
+The Web UI project selector can create, switch, and delete projects. Delete is limited to paused projects inside the current workspace.
 
 ### Fixed Base Workflow
 

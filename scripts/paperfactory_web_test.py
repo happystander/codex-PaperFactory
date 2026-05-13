@@ -195,6 +195,10 @@ def main() -> int:
             assert any(item["research_dir"] == str(created_root) and item["current"] for item in created["projects"])
             switched = fetch_json(base + "/api/project/switch", {"research_dir": str(root)})
             assert switched["research_dir"] == str(root)
+            deleted = fetch_json(base + "/api/project/delete", {"research_dir": str(created_root)})
+            assert deleted["deleted_project"]["deleted"] == str(created_project_dir)
+            assert not created_project_dir.exists()
+            assert deleted["research_dir"] == str(root)
 
             session = Path(tmp) / ".codex" / "sessions" / "2026" / "05" / "12" / "rollout-test.jsonl"
             session.parent.mkdir(parents=True, exist_ok=True)

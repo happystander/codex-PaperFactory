@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import researchctl
+from paperfactory_core import runtime_env
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -456,13 +457,30 @@ def parse_until(value: str) -> float:
         raise SystemExit("--until must be ISO-like, e.g. '2026-05-15 10:00:00'") from exc
 
 
-def run_codex_cycle(root: Path, codex_bin: str, dry_run: bool) -> int:
+def codex_exec_command(codex_bin: str, prompt: str, *, host_access: bool) -> list[str]:
+    cmd = [
+        codex_bin,
+        "exec",
+        "-c",
+        'shell_environment_policy.inherit="all"',
+    ]
+    if host_access:
+        cmd.append("--dangerously-bypass-approvals-and-sandbox")
+    else:
+        cmd.append("--full-auto")
+    cmd.extend(["--skip-git-repo-check", prompt])
+    return cmd
+
+
+def run_codex_cycle(root: Path, codex_bin: str, dry_run: bool, host_access: bool) -> int:
     prompt_path = write_next_prompt(root)
     prompt = prompt_path.read_text(encoding="utf-8")
     if dry_run:
         print(f"Dry run: wrote prompt to {relative_or_name(prompt_path)}")
         return 0
 
+    runtime_status = runtime_env.runtime_status()
+    env = runtime_env.env_for_subprocess(os.environ, runtime_status)
     log_file = root / "logs" / "codex-loop.out"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     workdir = codex_workdir(root)
@@ -470,10 +488,14 @@ def run_codex_cycle(root: Path, codex_bin: str, dry_run: bool) -> int:
     with log_file.open("a", encoding="utf-8") as handle:
         handle.write(f"\n[{researchctl.now()}] PaperFactory cycle start\n")
         handle.write(f"[{researchctl.now()}] Codex workdir: {workdir}\n")
+        handle.write(f"[{researchctl.now()}] Host access mode: {host_access}\n")
+        handle.write(f"[{researchctl.now()}] PAPERFACTORY_PYTHON: {env.get('PAPERFACTORY_PYTHON', '')}\n")
         handle.flush()
+        cmd = codex_exec_command(codex_bin, prompt, host_access=host_access)
         proc = subprocess.run(
-            [codex_bin, "exec", "--full-auto", "--skip-git-repo-check", prompt],
+            cmd,
             cwd=workdir,
+            env=env,
             stdout=handle,
             stderr=subprocess.STDOUT,
             text=True,
@@ -515,7 +537,7 @@ def command_run(args: argparse.Namespace) -> int:
             break
         if cycles is not None and completed >= cycles:
             break
-        rc = run_codex_cycle(root, args.codex_bin, args.dry_run)
+        rc = run_codex_cycle(root, args.codex_bin, args.dry_run, not args.codex_sandboxed)
         completed += 1
         cycle_state = researchctl.load_state(root)
         cycle_state.setdefault("cycles", []).append(
@@ -849,6 +871,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--until", help="Run until local time, e.g. '2026-05-15 10:00:00'")
     run.add_argument("--interval", type=int, default=1800, help="Seconds between cycles")
     run.add_argument("--codex-bin", default=os.environ.get("CODEX_BIN", "codex"), help="Codex CLI executable")
+    run.add_argument(
+        "--codex-sandboxed",
+        action="store_true",
+        help="Run Codex with its normal sandbox. Default host-access mode is better for local GPU/proxy experiments.",
+    )
     run.add_argument("--dry-run", action="store_true", help="Only write the prompt; do not call Codex")
     run.set_defaults(func=command_run)
 

@@ -10,6 +10,7 @@ import mimetypes
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -23,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 import researchctl
-from paperfactory_core import control, evidence, gpu, interventions, task_queue, ui_config
+from paperfactory_core import control, evidence, gpu, interventions, network, runtime_env, task_queue, ui_config
 from paperfactory_core.web_memory import read_memory_config, write_memory_config
 
 
@@ -237,6 +238,44 @@ def discover_projects(root: Path) -> list[dict[str, Any]]:
             }
         )
     return projects
+
+
+def project_roots_in_workspace(root: Path) -> list[Path]:
+    current = normalize_research_root(root)
+    workspace = workspace_for(current)
+    roots: list[Path] = []
+    if workspace.exists():
+        for child in sorted(workspace.iterdir(), key=lambda item: item.name.lower()):
+            rd = child / ".research"
+            try:
+                available = rd.is_dir() and researchctl.state_path(rd).exists()
+            except OSError:
+                available = False
+            if available:
+                roots.append(rd.resolve())
+    return roots
+
+
+def delete_research_project(current_root: Path, target: str) -> dict[str, Any]:
+    target_root = normalize_research_root(target)
+    workspace = workspace_for(current_root).resolve()
+    project_dir = (target_root.parent if target_root.name == ".research" else target_root).resolve()
+    if workspace not in project_dir.parents:
+        raise ValueError("只能删除当前工作区内的研究项目")
+    if not researchctl.state_path(target_root).exists():
+        raise ValueError("目标项目缺少研究状态文件")
+    job = project_job_summary(target_root)
+    if job.get("running"):
+        raise ValueError("项目正在运行，暂停后才能删除")
+    roots_before = [item for item in project_roots_in_workspace(current_root) if item.resolve() != target_root.resolve()]
+    if target_root.resolve() == normalize_research_root(current_root).resolve() and not roots_before:
+        raise ValueError("不能删除最后一个项目，请先新建或切换到其他项目")
+    shutil.rmtree(project_dir)
+    next_root = roots_before[0] if target_root.resolve() == normalize_research_root(current_root).resolve() else normalize_research_root(current_root)
+    return {
+        "deleted": str(project_dir),
+        "next_research_dir": str(next_root),
+    }
 
 
 def process_descendants(pid: int) -> list[int]:
@@ -665,6 +704,8 @@ def runtime_payload(root: Path) -> dict[str, Any]:
         },
         "interventions": patches,
         "gpu": gpu.gpu_status(),
+        "environment": runtime_env.runtime_status(),
+        "network": network.network_status(),
     }
 
 
@@ -2978,6 +3019,10 @@ def index_html_cn_v3() -> bytes:
         <h2 data-i18n="research_task">研究任务</h2>
         <select id="projectSelect" class="projectSelect"></select>
         <div class="row" style="margin-top:8px">
+          <button class="danger" id="deleteProjectBtn" data-i18n="delete_project">删除项目</button>
+          <span class="tiny" id="deleteProjectHint" data-i18n="delete_project_hint">只能删除已暂停的项目。</span>
+        </div>
+        <div class="row" style="margin-top:8px">
           <input id="projectPathInput" placeholder="输入 .research 或项目目录路径" data-i18n-placeholder="project_path_placeholder">
           <button id="switchPathBtn" data-i18n="switch">切换</button>
         </div>
@@ -3158,6 +3203,7 @@ def index_html_cn_v3() -> bytes:
     const I18N = {
       zh: {
         refresh:'刷新', research_task:'研究任务', project_path_placeholder:'输入 .research 或项目目录路径', switch:'切换',
+        delete_project:'删除项目', delete_project_hint:'只能删除已暂停的项目。', confirm_delete_project:'确定删除项目：{name}？这会移除该项目文件夹。',
         new_task_placeholder:'输入新研究方向', new_name_placeholder:'方向简称（可选）', create_and_switch:'新建并切换',
         create_note:'自动生成独立文件夹，旧研究继续后台运行。', run_control:'运行控制', interval_seconds:'间隔秒',
         cycles:'轮数', blank_continuous:'留空=持续', duration_minutes:'运行分钟', optional:'可选', dry_run:'只演练',
@@ -3199,6 +3245,7 @@ def index_html_cn_v3() -> bytes:
         paper_safe_claims:'{count} 可写 claim', claim_verified:'已验证 {verified} / 总计 {total}',
         should_pause:'需要暂停', can_continue:'允许继续', no_stop_reason:'未触发停止条件',
         recent_tasks:'最近任务', evidence_claims:'证据 claim', intervention_patches:'介入补丁', no_tasks:'暂无任务。',
+        environment_status:'环境/网络', selected_python:'Python：{value}', proxy_status:'代理：{value}',
         no_claims:'暂无 claim 证据。', no_patches:'暂无待处理介入补丁。', candidate:'候选', writable:'可写',
         no_progress:'还没有 Codex 进展。启动后台任务后，这里会显示 Codex 自己写入的自然语言更新。',
         artifacts:'产物', time:'时间', no_files:'暂无文件', file_count:'{count} 个', empty_new_task:'新研究方向不能为空',
@@ -3208,6 +3255,7 @@ def index_html_cn_v3() -> bytes:
       },
       en: {
         refresh:'Refresh', research_task:'Research Task', project_path_placeholder:'Enter a .research or project directory path', switch:'Switch',
+        delete_project:'Delete Project', delete_project_hint:'Only paused projects can be deleted.', confirm_delete_project:'Delete project: {name}? This removes its project folder.',
         new_task_placeholder:'Enter a new research direction', new_name_placeholder:'Short name (optional)', create_and_switch:'Create and Switch',
         create_note:'Creates an independent folder; existing runs can continue in the background.', run_control:'Run Control', interval_seconds:'Interval Sec',
         cycles:'Cycles', blank_continuous:'blank = continuous', duration_minutes:'Run Minutes', optional:'optional', dry_run:'Dry run',
@@ -3249,6 +3297,7 @@ def index_html_cn_v3() -> bytes:
         paper_safe_claims:'{count} paper-safe claims', claim_verified:'Verified {verified} / Total {total}',
         should_pause:'Pause needed', can_continue:'Can continue', no_stop_reason:'No stop condition triggered',
         recent_tasks:'Recent Tasks', evidence_claims:'Evidence Claims', intervention_patches:'Intervention Patches', no_tasks:'No tasks.',
+        environment_status:'Environment / Network', selected_python:'Python: {value}', proxy_status:'Proxy: {value}',
         no_claims:'No claim evidence yet.', no_patches:'No pending intervention patches.', candidate:'Candidate', writable:'Paper-safe',
         no_progress:'No Codex progress yet. After you start a background run, this area shows natural-language updates written by Codex.',
         artifacts:'Artifacts', time:'Time', no_files:'No files', file_count:'{count}', empty_new_task:'New research direction cannot be empty',
@@ -3725,7 +3774,12 @@ def index_html_cn_v3() -> bytes:
       const taskHtml = tasks.length ? tasks.map(t => `<div class="runtimeItem"><strong>${esc(t.status || 'pending')} · ${esc(t.title || t.id)}</strong><span class="tiny">${esc(t.phase || '')} · priority ${esc(t.priority ?? '-')} · ${esc(t.expected_output || '')}</span></div>`).join('') : `<div class="runtimeItem">${esc(t('no_tasks'))}</div>`;
       const claimHtml = claims.length ? claims.map(c => `<div class="runtimeItem"><strong>${c.paper_safe ? t('writable') : t('candidate')} · ${esc(c.claim || c.id)}</strong><span class="tiny">${esc(c.phase || '')} · confidence ${esc(c.confidence ?? '-')}</span></div>`).join('') : `<div class="runtimeItem">${esc(t('no_claims'))}</div>`;
       const patchHtml = patches.length ? patches.map(p => `<div class="runtimeItem"><strong>${esc(p.kind || 'general')} · ${esc(p.status || 'pending')}</strong><span class="tiny">${esc(p.message || '')}</span></div>`).join('') : `<div class="runtimeItem">${esc(t('no_patches'))}</div>`;
-      $('runtimeDetails').innerHTML = `<div><div class="label">${esc(t('recent_tasks'))}</div>${taskHtml}</div><div><div class="label">${esc(t('evidence_claims'))}</div>${claimHtml}</div><div><div class="label">${esc(t('intervention_patches'))}</div>${patchHtml}</div>`;
+      const env = data.environment || {};
+      const selected = env.selected || {};
+      const net = data.network || {};
+      const proxyKeys = Object.keys(net.proxies || {});
+      const envHtml = `<div class="runtimeItem"><strong>${esc(t('selected_python', {value: selected.executable || '-'}))}</strong><span class="tiny">torch/transformers/datasets: ${selected.research_ready ? 'OK' : 'WARN'} · CUDA ${selected.cuda && selected.cuda.available ? 'OK' : 'WARN'}</span></div><div class="runtimeItem"><strong>${esc(t('proxy_status', {value: proxyKeys.length ? proxyKeys.join(', ') : '-'}))}</strong><span class="tiny">${net.local_proxy_blocked ? 'localhost proxy blocked' : 'proxy check ok'}</span></div>`;
+      $('runtimeDetails').innerHTML = `<div><div class="label">${esc(t('recent_tasks'))}</div>${taskHtml}</div><div><div class="label">${esc(t('evidence_claims'))}</div>${claimHtml}</div><div><div class="label">${esc(t('intervention_patches'))}</div>${patchHtml}</div><div><div class="label">${esc(t('environment_status'))}</div>${envHtml}</div>`;
     }
     function renderFeed(data) {
       lastFeedData = data;
@@ -3756,6 +3810,8 @@ def index_html_cn_v3() -> bytes:
         const cur = p.current ? t('current') : run;
         return `<option value="${esc(p.research_dir)}" ${p.current ? 'selected' : ''}>${esc(p.name)} · ${esc(p.phase || '')} · ${esc(cur)}</option>`;
       }).join('');
+      const selected = data.projects.find(p => p.research_dir === $('projectSelect').value) || data.projects.find(p => p.current);
+      $('deleteProjectBtn').disabled = !selected || !!selected.running;
     }
     async function refreshProjects() { renderProjects(await api('/api/projects')); }
     async function refreshStatus() { renderStatus(await api('/api/status')); }
@@ -3847,6 +3903,18 @@ def index_html_cn_v3() -> bytes:
         btn.textContent = t('create_and_switch');
       }
     }
+    async function deleteSelectedProject() {
+      const path = $('projectSelect').value;
+      const selected = lastProjectsData && lastProjectsData.projects.find(p => p.research_dir === path);
+      if (!path || !selected) return;
+      if (!window.confirm(t('confirm_delete_project', {name: selected.name || path}))) return;
+      try {
+        await api('/api/project/delete', {method: 'POST', body: JSON.stringify({research_dir: path})});
+        openTreeFolders.clear();
+        treeInitialized = false;
+        await refreshAll();
+      } catch (err) {}
+    }
     applyLanguage(uiLanguage);
     $('refreshBtn').addEventListener('click', refreshAll);
     $('langZhBtn').addEventListener('click', () => saveUiLanguage('zh', true));
@@ -3858,6 +3926,7 @@ def index_html_cn_v3() -> bytes:
       if (path) switchProject(path);
     });
     $('newProjectBtn').addEventListener('click', createProject);
+    $('deleteProjectBtn').addEventListener('click', deleteSelectedProject);
     $('startBtn').addEventListener('click', async () => {
       const cycles = $('cyclesInput').value.trim();
       const duration = $('durationInput').value.trim();
@@ -4068,6 +4137,17 @@ class PaperFactoryHandler(BaseHTTPRequestHandler):
                 payload = phase_payload(new_root)
                 payload["job"] = self.manager.snapshot()
                 payload["created_project"] = created
+                payload["projects"] = discover_projects(new_root)
+                self.send_json(payload)
+            elif parsed.path == "/api/project/delete":
+                target = str(body.get("research_dir") or "")
+                deleted = delete_research_project(self.root, target)
+                new_root = Path(deleted["next_research_dir"]).resolve()
+                type(self).root = new_root
+                self.manager.root = new_root
+                payload = phase_payload(new_root)
+                payload["job"] = self.manager.snapshot()
+                payload["deleted_project"] = deleted
                 payload["projects"] = discover_projects(new_root)
                 self.send_json(payload)
             elif parsed.path == "/api/prompt":

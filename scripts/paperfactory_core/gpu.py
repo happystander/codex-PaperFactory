@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from datetime import datetime
 from typing import Any
+
+from paperfactory_core import runtime_env
 
 
 GPU_QUERY = (
@@ -61,6 +64,103 @@ def _empty_status(*, command_available: bool, health: str, message: str, error: 
     }
 
 
+def _torch_cuda_fallback(timeout: float = 8.0) -> dict[str, Any] | None:
+    """Return a coarse CUDA snapshot via torch when NVML/nvidia-smi is unavailable."""
+
+    status = runtime_env.runtime_status()
+    python_bin = str(status.get("selected", {}).get("executable") or "")
+    if not python_bin:
+        return None
+    code = r"""
+import json
+payload = {"available": False, "gpus": [], "error": ""}
+try:
+    import torch
+    payload["available"] = bool(torch.cuda.is_available())
+    for index in range(torch.cuda.device_count()):
+        free, total = torch.cuda.mem_get_info(index)
+        payload["gpus"].append({
+            "index": index,
+            "name": torch.cuda.get_device_name(index),
+            "memory_total_mb": int(total // (1024 * 1024)),
+            "memory_free_mb": int(free // (1024 * 1024)),
+            "memory_used_mb": int((total - free) // (1024 * 1024)),
+        })
+except Exception as exc:
+    payload["error"] = f"{type(exc).__name__}: {exc}"
+print(json.dumps(payload, ensure_ascii=False))
+"""
+    try:
+        proc = subprocess.run(
+            [python_bin, "-c", code],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        payload = json.loads(proc.stdout.strip().splitlines()[-1])
+    except Exception:
+        return None
+    if not payload.get("available") or not payload.get("gpus"):
+        return None
+    gpus: list[dict[str, Any]] = []
+    for item in payload.get("gpus", []):
+        total = item.get("memory_total_mb")
+        used = item.get("memory_used_mb")
+        memory_used_percent = round((used / total) * 100, 1) if used is not None and total else None
+        free_ratio = (item.get("memory_free_mb") / total) if item.get("memory_free_mb") is not None and total else 0
+        idle = used is None or used <= 512
+        usable = idle or free_ratio >= 0.75
+        gpus.append(
+            {
+                "index": item.get("index"),
+                "uuid": "",
+                "name": item.get("name"),
+                "memory_total_mb": total,
+                "memory_used_mb": used,
+                "memory_free_mb": item.get("memory_free_mb"),
+                "memory_used_percent": memory_used_percent,
+                "utilization_percent": None,
+                "temperature_c": None,
+                "power_w": None,
+                "power_limit_w": None,
+                "process_count": 0,
+                "processes": [],
+                "status": "idle" if idle else "usable" if usable else "busy",
+                "idle": idle,
+                "usable": usable,
+                "source": "torch",
+            }
+        )
+    recommended = [
+        item["index"]
+        for item in sorted(gpus, key=lambda gpu: (0 if gpu["status"] == "idle" else 1, -(gpu.get("memory_free_mb") or 0)))
+        if item.get("usable") and item.get("index") is not None
+    ]
+    idle_count = sum(1 for item in gpus if item.get("idle"))
+    usable_count = sum(1 for item in gpus if item.get("usable"))
+    return {
+        "checked_at": datetime.now().astimezone().isoformat(),
+        "command_available": shutil.which("nvidia-smi") is not None,
+        "available": True,
+        "health": "available_torch_fallback",
+        "message": f"{usable_count} usable CUDA GPU(s) via torch fallback; nvidia-smi/NVML is unavailable",
+        "error": payload.get("error", ""),
+        "gpu_count": len(gpus),
+        "idle_count": idle_count,
+        "usable_count": usable_count,
+        "recommended_gpu_indexes": recommended,
+        "gpus": gpus,
+        "source": "torch",
+    }
+
+
 def gpu_status(timeout: float = 3.0) -> dict[str, Any]:
     """Return a structured snapshot of local NVIDIA GPU availability.
 
@@ -96,6 +196,10 @@ def gpu_status(timeout: float = 3.0) -> dict[str, Any]:
 
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout).strip()
+        fallback = _torch_cuda_fallback(timeout=max(timeout, 20.0))
+        if fallback:
+            fallback["nvidia_smi_error"] = detail
+            return fallback
         return _empty_status(
             command_available=True,
             health="driver_unavailable",
