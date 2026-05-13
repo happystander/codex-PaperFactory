@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import html
-import importlib.util
 import json
 import os
 import shutil
@@ -18,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import researchctl
-from paperfactory_core import runtime_env
+from paperfactory_core import runtime_env, tool_env
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -621,7 +620,7 @@ def append_binary_check(
     *,
     required: bool = False,
 ) -> None:
-    found = shutil.which(binary)
+    found = tool_env.command_path(binary)
     if found:
         checks.append((label, "OK", found))
     else:
@@ -638,8 +637,9 @@ def append_python_package_check(
     package: str | None = None,
     required: bool = False,
 ) -> None:
-    if importlib.util.find_spec(module):
-        checks.append((label, "OK", f"Python module `{module}` available"))
+    provider = tool_env.module_available(module)
+    if provider:
+        checks.append((label, "OK", f"Python module `{module}` available via {provider}"))
     else:
         status = "ERROR" if required else "WARN"
         install_name = package or module
@@ -752,7 +752,6 @@ def command_doctor(args: argparse.Namespace) -> int:
     research_binaries = (
         ("tool:library:scholaraio", "scholaraio", "structured paper search, workspaces, citation checks, and scientific tool references"),
         ("tool:paper:pandoc", "pandoc", "Markdown/LaTeX/DOCX conversion"),
-        ("tool:paper:libreoffice", "libreoffice", "Office document export and inspection"),
         ("tool:paper:latexmk", "latexmk", "repeatable LaTeX builds"),
         ("tool:paper:pdflatex", "pdflatex", "fallback PDF compilation"),
         ("tool:paper:tectonic", "tectonic", "self-contained LaTeX builds"),
@@ -762,15 +761,9 @@ def command_doctor(args: argparse.Namespace) -> int:
         ("tool:diagram:inkscape", "inkscape", "SVG/PDF figure conversion and inspection"),
         ("tool:gpu:nvidia-smi", "nvidia-smi", "GPU availability monitoring for UI and Codex prompts"),
         ("tool:pdf:pdftotext", "pdftotext", "fast local PDF text extraction"),
-        ("tool:pdf:grobid", "grobid_client", "structured scholarly PDF extraction"),
-        ("tool:pdf:java", "java", "running GROBID or Java PDF tooling"),
         ("tool:lit:jq", "jq", "metadata API response inspection"),
         ("tool:lit:curl", "curl", "OpenAlex/Crossref/arXiv/Semantic Scholar API queries"),
         ("tool:lit:wget", "wget", "paper and dataset downloads"),
-        ("tool:repro:dvc", "dvc", "data/model artifact versioning"),
-        ("tool:repro:git-lfs", "git-lfs", "large artifact pointers in Git"),
-        ("tool:track:mlflow", "mlflow", "experiment tracking UI and run metadata"),
-        ("tool:flow:snakemake", "snakemake", "reproducible experiment workflows"),
     )
     for label, binary, purpose in research_binaries:
         append_binary_check(checks, label, binary, purpose)
@@ -782,15 +775,18 @@ def command_doctor(args: argparse.Namespace) -> int:
         ("pkg:doc:markitdown", "markitdown", "Office/document-to-Markdown conversion", "markitdown"),
         ("pkg:pdf:pypdf", "pypdf", "fallback PDF metadata/text extraction", "pypdf"),
         ("pkg:pdf:pdfminer", "pdfminer", "fallback PDF layout/text extraction", "pdfminer.six"),
-        ("pkg:topic:bertopic", "bertopic", "topic clustering for literature workspaces", "bertopic"),
-        ("pkg:config:hydra", "hydra", "composable experiment configuration", "hydra-core"),
-        ("pkg:config:omegaconf", "omegaconf", "typed experiment configuration", "omegaconf"),
-        ("pkg:llm:trl", "trl", "Hugging Face post-training trainers", "trl"),
-        ("pkg:llm:ms-swift", "swift", "ModelScope fine-tuning/RL full pipeline", "ms-swift"),
-        ("pkg:llm:verl", "verl", "large-scale LLM RL post-training", "git+https://github.com/verl-project/verl.git"),
     )
     for label, module, purpose, package in research_packages:
         append_python_package_check(checks, label, module, purpose, package=package)
+
+    for status in tool_env.list_status():
+        checks.append(
+            (
+                f"tool-env:{status['name']}",
+                "OK" if status["ok"] else "WARN",
+                f"{status['description']} at {status['path']}",
+            )
+        )
 
     reference_manifest = ROOT / "reference_papers" / "manifest.json"
     checks.append(
@@ -813,6 +809,22 @@ def command_doctor(args: argparse.Namespace) -> int:
     for name, status, detail in checks:
         print(f"{status:5} {name:22} {detail}")
     return 1 if any(status == "ERROR" for _, status, _ in checks) else 0
+
+
+def command_tools(args: argparse.Namespace) -> int:
+    names = args.names or ["all"]
+    if args.tools_command == "list":
+        for status in tool_env.list_status(names):
+            flag = "OK" if status["ok"] else "MISSING"
+            print(f"{flag:7} {status['name']:12} {status['description']}")
+            print(f"        {status['path']}")
+        return 0
+    if args.tools_command == "install":
+        for spec in tool_env.available_specs(names):
+            print(f"Installing isolated tool env: {spec.name} -> {tool_env.env_dir(spec.name)}")
+            tool_env.install_spec(spec, recreate=args.recreate)
+        return 0
+    raise SystemExit("unknown tools command")
 
 
 def command_delegate(script_name: str, tool_args: list[str]) -> int:
@@ -938,6 +950,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="Check local PaperFactory dependencies")
     doctor.set_defaults(func=command_doctor)
+
+    tools = sub.add_parser("tools", help="Manage isolated optional-tool environments")
+    tools_sub = tools.add_subparsers(dest="tools_command", required=True)
+    tools_list = tools_sub.add_parser("list", help="List isolated tool environments")
+    tools_list.add_argument("names", nargs="*", help="Tool env names or all")
+    tools_list.set_defaults(func=command_tools)
+    tools_install = tools_sub.add_parser("install", help="Install isolated tool environments")
+    tools_install.add_argument("names", nargs="*", help="Tool env names or all")
+    tools_install.add_argument("--recreate", action="store_true", help="Delete and recreate selected tool envs")
+    tools_install.set_defaults(func=command_tools)
 
     bib = sub.add_parser("bib", help="Run the BibTeX search helper through this launcher")
     bib.add_argument("tool_args", nargs=argparse.REMAINDER)

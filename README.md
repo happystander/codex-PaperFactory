@@ -118,16 +118,23 @@ ssh -L 8765:127.0.0.1:8765 user@server
 | Node.js | 推荐 | Draw.io 学术图表 skill CLI。 | `node --version` |
 | LaTeX 工具链 | 可选 | 编译生成的 LaTeX 论文。 | `latexmk --version` |
 | matplotlib | 可选 | `paperfactory plot` 绘图。 | `python3 -m pip install matplotlib` |
-| 文献/PDF 工具 | 推荐 | ScholarAIO workspace、arXiv/Crossref/Semantic Scholar、PDF/Office 解析、topic/citation graph。 | `./paperfactory doctor` |
-| 实验工具 | 推荐 | MLflow、DVC、git-lfs、Snakemake、Hydra。 | [`docs/open-research-tooling.md`](docs/open-research-tooling.md) |
+| 文献/PDF 工具 | 推荐 | ScholarAIO workspace、arXiv/Crossref/Semantic Scholar、PDF/Office 解析。 | `./paperfactory doctor` |
 | 科学运行时工具 | 按任务需要 | GROMACS、LAMMPS、OpenFOAM、Quantum ESPRESSO、生信 CLI 等官方文档优先运行。 | `./paperfactory doctor` |
 | NVIDIA 工具 | GPU 任务需要 | Web UI 显示 GPU 显存、利用率、温度、进程数和推荐空闲卡；Codex prompt 会读取同一状态。 | `nvidia-smi` |
-| LLM/RL 框架 | 按任务需要 | TRL、verl、ms-swift 等。 | `./paperfactory doctor` |
 | 写作/绘图 skills | 推荐 | 论文写作、结果回填、节奏润色、Draw.io 图表。 | `./paperfactory doctor` |
 
 `doctor` 把核心问题显示为 `ERROR`，把可选能力缺失显示为 `WARN`。缺少可选工具时主流程仍能跑，但文献解析、实验可复现性、绘图和论文构建能力会变弱。
 
 PaperFactory 会自动探测可用 Python 运行时，优先使用 `PAPERFACTORY_PYTHON`、`PYTHON_BIN` 或已知 Conda 环境中包含 `torch/transformers/datasets` 的解释器。后台 Codex 默认使用 host-access 模式，避免本机 GPU、localhost 代理和数据下载被 Codex sandbox 隔离；如需回到 Codex 默认隔离模式，可运行 `paperfactory run --codex-sandboxed ...`。
+
+可选工具不要直接装进 PaperFactory 主 Python。使用隔离工具环境：
+
+```bash
+./paperfactory tools list
+./paperfactory tools install literature pandoc
+```
+
+默认安装到 `~/.local/share/paperfactory/tools/<name>`，命令包装器放在 `~/.local/bin`。目前默认只管理轻量通用工具：文献检索/元数据、PDF/Office 解析、Pandoc 转换；实验追踪、主题聚类和 LLM/RL 训练框架按具体任务手动处理。
 
 ### 运行方式
 
@@ -232,6 +239,7 @@ paperfactory web --open
 | `paperfactory intervention --message "..."` | 记录结构化人工介入补丁。 |
 | `paperfactory validate` | 校验状态和阶段报告。 |
 | `paperfactory web --open` | 启动交互式 Web UI。 |
+| `paperfactory tools list/install` | 查看或安装隔离可选工具环境。 |
 | `paperfactory doctor` | 检查本地依赖和可选 skills。 |
 | `paperfactory fetch-refs -- --pdf-only` | 下载获奖论文参考到本地忽略缓存。 |
 
@@ -425,14 +433,21 @@ ln -s "$(pwd)/paperfactory" ~/.local/bin/paperfactory
 | Node.js | Recommended | Draw.io academic diagram skill CLI. | `node --version` |
 | LaTeX toolchain | Optional | Compile generated papers. | `latexmk --version` |
 | matplotlib | Optional | `paperfactory plot`. | `python3 -m pip install matplotlib` |
-| Literature/PDF tools | Recommended | ScholarAIO workspaces, literature APIs, PDF/Office extraction, topic/citation graphs. | `./paperfactory doctor` |
-| Experiment tools | Recommended | MLflow, DVC, git-lfs, Snakemake, Hydra. | [`docs/open-research-tooling.md`](docs/open-research-tooling.md) |
+| Literature/PDF tools | Recommended | ScholarAIO workspaces, literature APIs, PDF/Office extraction. | `./paperfactory doctor` |
 | Scientific runtime tools | Task dependent | Official-doc-first GROMACS, LAMMPS, OpenFOAM, Quantum ESPRESSO, bioinformatics CLIs, and similar tools. | `./paperfactory doctor` |
 | NVIDIA tools | Required for GPU work | Web UI shows GPU memory, utilization, temperature, process count, and recommended idle cards; Codex prompts read the same snapshot. | `nvidia-smi` |
-| LLM/RL frameworks | Task dependent | TRL, verl, ms-swift, etc. | `./paperfactory doctor` |
 | Writing/figure skills | Recommended | Paper writing, result backfill, prose refinement, Draw.io figures. | `./paperfactory doctor` |
 
 PaperFactory auto-detects a useful Python runtime. It prefers `PAPERFACTORY_PYTHON`, `PYTHON_BIN`, or known Conda environments that provide `torch/transformers/datasets`. Background Codex runs use host-access mode by default so local GPUs, localhost proxies, and dataset downloads are not blocked by Codex sandbox isolation. Use `paperfactory run --codex-sandboxed ...` to opt back into the normal Codex sandbox.
+
+Install optional tools into isolated environments instead of the PaperFactory controller Python:
+
+```bash
+./paperfactory tools list
+./paperfactory tools install literature pandoc
+```
+
+Tool envs live under `~/.local/share/paperfactory/tools/<name>` by default, with command wrappers in `~/.local/bin`. The default managed set is intentionally lightweight: literature search/metadata, PDF/Office parsing, and Pandoc conversion. Experiment tracking, topic modeling, and LLM/RL training frameworks are handled per task instead of installed by default.
 
 ### Run Modes
 
@@ -523,6 +538,7 @@ paperfactory web --open
 | `paperfactory intervention --message "..."` | Record a structured intervention patch. |
 | `paperfactory validate` | Validate state and phase reports. |
 | `paperfactory web --open` | Start the Web UI. |
+| `paperfactory tools list/install` | List or install isolated optional-tool environments. |
 | `paperfactory doctor` | Check local dependencies and optional skills. |
 
 ### Artifacts

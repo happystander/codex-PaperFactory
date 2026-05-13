@@ -85,6 +85,11 @@ def main() -> int:
         assert f"Codex workdir: {cwd}" in codex_log
         assert f"FAKE_CODEX_CWD={cwd}" in codex_log
 
+        proc = run(["tools", "list"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert "literature" in proc.stdout
+        assert "pandoc" in proc.stdout
+
     print("paperfactory launcher smoke tests passed")
     return 0
 
