@@ -71,6 +71,18 @@ The long-running workflow also maintains operational control files:
 | `interventions/patches.jsonl` | Structured human intervention patches for scope, workflow, memory, and stop-condition changes. |
 | `control/stop_conditions.json` | Stop and success conditions for unattended runs. |
 
+Survey and method-design artifacts have stricter contracts because they control whether a project is allowed to invent a new method:
+
+| File | Required Content |
+| --- | --- |
+| `literature/paper_priority_scores.json` | Ranked papers with relevance, recency, citation signal, code availability, protocol closeness, baseline strength, total score, include/exclude decision, and reason. |
+| `literature/claim_extraction.json` | Structured extraction per paper: task, method, datasets, metrics, baselines, limitations, claims, source anchors, and code/checkpoint/data availability. |
+| `literature/code_interface_map.md` | Reference repository interface map: data entry, model entry, training command, evaluation command, config system, reusable modules, and incompatibilities. |
+| `method/nearest_prior_diff.md` | Module-level comparison against the nearest three prior works: inputs, representation, objective/loss, architecture, training data, inference, assumptions, code hooks, and what remains new. |
+| `method/candidate_methods.json` | Multiple candidate methods with hypothesis, mechanism, expected win, implementation cost, required data, strongest overlap, falsifying ablation, and smoke-test feasibility. |
+| `method/idea_critic.md` | Skeptical reviewer pass that rejects weak candidates and explains repairs before implementation. |
+| `method/novelty_risk.json` | Hard gate with `novelty_risk_score`, `risk_level`, `overlap_types`, `missing_evidence`, `required_repairs`, and `pass_to_smoke`. `method_design` cannot advance unless `pass_to_smoke` is true, score is at most `0.5`, and blocking overlap types are absent. |
+
 Every phase should run an internal loop before setting `status: complete`: execute, self-check, repair, evidence-check, write the report, and choose the route. Record that loop in `report.self_check`.
 
 Every phase should finish with a cleanup pass. Remove only obvious temporary files, caches, duplicate drafts, empty files, and obsolete scratch outputs created by that phase. When a file may have evidence or reproducibility value, move it to `.research/archive/cleanup/<phase>/` instead of deleting it, and record the reason in the phase report `cleanup` object.

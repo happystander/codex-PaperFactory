@@ -47,17 +47,17 @@ For each work cycle:
 The default pipeline is:
 
 - `scope`: precise target, exclusions, venue/domain, datasets, metrics, compute assumptions, success criteria.
-- `survey`: recent papers, official code, datasets, leaderboards, baseline matrix, novelty gap; use `paper-reader` and `citation-workflow` when useful.
+- `survey`: recent papers, official code, paper priority scoring, structured claim extraction, datasets, leaderboards, baseline matrix, code interface map, novelty gap; use `paper-reader` and `citation-workflow` when useful.
 - `data_sanity`: real dataset or explicitly marked proxy, split checks, leakage risks, metric protocol.
 - `cheap_baselines`: simple but strong baselines under the exact target protocol.
-- `method_design`: gap-driven method with falsifiable ablations and staged escalation plan.
+- `method_design`: gap-driven method with nearest-prior module diff, candidate idea generation, critic rejection pass, novelty risk score, falsifiable ablations, and staged escalation plan.
 - `method_smoke`: minimal method implementation and smoke test, with failure diagnosis.
 - `advanced_comparison`: released checkpoints or fair reproduction of strong baselines when justified.
 - `paper_evidence`: main results, ablations, robustness, failure cases, statistics, compute details, and paper-ready figure/source-data plans.
 - `paper_drafting`: paper, appendix, and availability statements written from evidence only, using `conference-paper-writing`, `academic-polishing`, `citation-workflow`, and `data-availability`.
 - `internal_review`: adversarial review of novelty, evidence, reproducibility, and overclaiming, using `manuscript-audit`.
 
-Do not call a method novel until the nearest prior work, exact technical difference, falsifying ablation, and stronger-baseline relevance have been written down.
+Do not call a method novel until the nearest three prior works, exact module-level technical differences, falsifying ablations, stronger-baseline relevance, and novelty risk score have been written down.
 
 ## Autonomy Policy
 

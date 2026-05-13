@@ -83,10 +83,10 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 默认阶段如下：
 
 1. `scope`: 明确研究问题、排除范围、数据集、指标、算力、成功标准。
-2. `survey`: 查近期论文、官方代码、数据集、排行榜，建立 baseline matrix 和 novelty gap。
+2. `survey`: 查近期论文、官方代码、数据集、排行榜，建立论文优先级评分、claim extraction、代码接口图、baseline matrix 和 novelty gap。
 3. `data_sanity`: 检查真实数据、切分、标签、泄漏风险和指标协议。
 4. `cheap_baselines`: 先跑强但便宜的基线。
-5. `method_design`: 基于明确 gap 设计方法和可证伪消融。
+5. `method_design`: 基于 nearest-prior diff、候选方法生成、critic 审查和 novelty risk gate 设计方法；如果只是调参、浅组合或没有可证伪消融，不能进入 smoke test。
 6. `method_smoke`: 最小方法路径烟测。
 7. `advanced_comparison`: 公平比较高级 baseline 或官方 checkpoint。
 8. `paper_evidence`: 整理主结果、消融、鲁棒性、失败边界、复现信息，并用 `scientific-figure` 规划论文图，用 `drawio-academic-skills` 生成可编辑结构图 bundle 和 source-data manifest。

@@ -38,8 +38,10 @@ Condensed from:
    - limitations and failure cases.
 4. Save under `.research/literature/readings/`:
    - `<slug>.md`;
-   - optional `<slug>.json` for structured baseline facts.
-5. Update `.research/literature/baseline_matrix.md` when the paper is a relevant baseline.
+   - `<slug>.json` for structured baseline and claim facts.
+5. Update `.research/literature/claim_extraction.json` with one structured row per inspected paper.
+6. Update `.research/literature/paper_priority_scores.json` when the paper changes the survey ranking.
+7. Update `.research/literature/baseline_matrix.md` when the paper is a relevant baseline.
 
 ## Reading Note Format
 
@@ -66,6 +68,53 @@ Condensed from:
 ## Claim Anchors
 | ID | Source location | Claim | Evidence | Use in our paper |
 ```
+
+## Structured Claim Extraction
+
+Each inspected paper should have a JSON row with:
+
+```json
+{
+  "paper_id": "stable-slug-or-doi",
+  "title": "",
+  "year": 0,
+  "venue": "",
+  "source_url": "",
+  "task": "",
+  "method": "",
+  "datasets": [],
+  "metrics": [],
+  "baselines": [],
+  "limitations": [],
+  "claims": [
+    {
+      "claim": "",
+      "source_anchor": "S001",
+      "evidence_anchor": "F001/T001/S002",
+      "use_in_our_work": "baseline|motivation|contrast|not_applicable"
+    }
+  ],
+  "artifacts": {
+    "code": "",
+    "checkpoint": "",
+    "data": "",
+    "project_page": ""
+  }
+}
+```
+
+## Paper Priority Scoring
+
+When ranking candidate papers for survey depth, score each paper from 0 to 5 on:
+
+- relevance to the current scoped task;
+- recency;
+- citation or community signal;
+- code/checkpoint/data availability;
+- protocol closeness: dataset, split, metrics, candidate set, prompt budget, inference constraints;
+- baseline strength and whether it is a conceptual or reproducible SOTA.
+
+Save the weighted ranking to `.research/literature/paper_priority_scores.json`. Include both included and excluded papers with a short reason.
 
 ## Bilingual Mode
 

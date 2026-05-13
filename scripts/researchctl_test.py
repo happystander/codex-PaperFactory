@@ -173,6 +173,76 @@ def main() -> int:
         proc = run(["--research-dir", str(rd), "validate"], cwd)
         assert proc.returncode == 0, proc.stderr
 
+        state = json.loads((rd / "state.json").read_text(encoding="utf-8"))
+        state["phase"] = "survey"
+        (rd / "state.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+        proc = run(["--research-dir", str(rd), "next-prompt"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert "literature/paper_priority_scores.json" in proc.stdout
+        assert "literature/claim_extraction.json" in proc.stdout
+        assert "literature/code_interface_map.md" in proc.stdout
+
+        state["phase"] = "method_design"
+        (rd / "state.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+        for rel in (
+            "method/atomic_concepts.md",
+            "method/nearest_prior_diff.md",
+            "method/candidate_methods.json",
+            "method/idea_critic.md",
+            "method/method_design.md",
+            "method/implementation_plan.md",
+            "experiments/method_smoke/plan.md",
+        ):
+            path = rd / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("fixture\n", encoding="utf-8")
+        (rd / "method" / "novelty_risk.json").write_text(
+            json.dumps(
+                {
+                    "novelty_risk_score": 0.9,
+                    "risk_level": "high",
+                    "overlap_types": ["parameter_tuning"],
+                    "pass_to_smoke": False,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (rd / "reports" / "method_design.json").write_text(
+            json.dumps(
+                {
+                    "phase": "method_design",
+                    "status": "complete",
+                    "self_check": {"review_gate": "method_innovation_review", "review_result": "pass"},
+                    "route": {"decision": "advance", "confidence": 0.8},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        proc = run(["--research-dir", str(rd), "advance"], cwd)
+        assert proc.returncode == 1
+        assert "pass_to_smoke is not true" in proc.stdout
+        assert "parameter_tuning" in proc.stdout
+
+        (rd / "method" / "novelty_risk.json").write_text(
+            json.dumps(
+                {
+                    "novelty_risk_score": 0.2,
+                    "risk_level": "low",
+                    "overlap_types": [],
+                    "missing_evidence": [],
+                    "required_repairs": [],
+                    "pass_to_smoke": True,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        proc = run(["--research-dir", str(rd), "advance"], cwd)
+        assert proc.returncode == 0, proc.stderr
+        assert "method_design -> method_smoke" in proc.stdout
+
     print("researchctl smoke tests passed")
     return 0
 

@@ -61,17 +61,23 @@ PHASES: tuple[Phase, ...] = (
         objective="Build a primary-source survey and identify the closest reproducible baselines.",
         required=(
             "literature/reading_list.md",
+            "literature/paper_priority_scores.json",
+            "literature/claim_extraction.json",
             "literature/baseline_matrix.md",
             "literature/reference_codebases.md",
+            "literature/code_interface_map.md",
             "literature/novelty_gap.md",
             "reports/survey.json",
         ),
-        gate="Survey covers recent papers, official repositories, 5-8 inspected reference codebases, datasets, leaderboards, checkpoint availability, protocol details, reproduction cost, and fairness risks.",
+        gate="Survey covers recent papers, official repositories, scored paper priority, structured claim extraction, 5-8 inspected reference codebases with interface maps, datasets, leaderboards, checkpoint availability, protocol details, reproduction cost, and fairness risks.",
         prompt_focus=(
             "Search broadly using primary sources and verify recent or unstable facts.",
             "Use paper-reader for source-grounded paper notes and citation-workflow for local bibliography/citation mapping.",
+            "Score candidate papers in literature/paper_priority_scores.json by relevance, recency, citation signal, code availability, protocol closeness, and baseline strength; explain why top papers were included or excluded.",
+            "Extract task, method, dataset, metric, baseline, limitation, code/checkpoint/data availability, and paper claims into literature/claim_extraction.json with source anchors for every inspected paper.",
             "Run an AI-Researcher-style Prepare step: select 5-8 reference codebases by relevance, recency, reproducibility, readability, and implementation coverage.",
             "Write the reference codebase matrix with repository URL, paper link if any, license, install status, runnable entry points, reusable ideas, and reasons to exclude weak repos.",
+            "Upgrade reference_codebases.md into a code interface map in literature/code_interface_map.md: data entry, model entry, training command, evaluation command, config system, reusable modules, and incompatibilities.",
             "Record conceptual SOTA separately from reproducible SOTA.",
             "State the nearest prior work and the precise unsolved gap.",
         ),
@@ -111,14 +117,22 @@ PHASES: tuple[Phase, ...] = (
         objective="Design a staged method only after the gap and baseline floor are known.",
         required=(
             "method/atomic_concepts.md",
+            "method/nearest_prior_diff.md",
+            "method/candidate_methods.json",
+            "method/idea_critic.md",
+            "method/novelty_risk.json",
             "method/method_design.md",
             "method/implementation_plan.md",
             "experiments/method_smoke/plan.md",
             "reports/method_design.json",
         ),
-        gate="Method design decomposes the innovation into atomic concepts, states the new signal/objective/architecture/inference change, maps each concept to papers and implementation hooks, and names ablations that can falsify it.",
+        gate="Method design decomposes the innovation into atomic concepts, compares against the nearest three prior works, runs an idea-generator plus critic loop, states the new signal/objective/architecture/inference change, maps each concept to papers and implementation hooks, names falsifying ablations, and records a novelty risk score low enough to justify smoke testing.",
         prompt_focus=(
             "Compare against the nearest prior work before naming the contribution.",
+            "Write method/nearest_prior_diff.md comparing the proposed method against the nearest 3 prior works at module level: inputs, representation, objective/loss, architecture, training data, inference, assumptions, reusable code hooks, and what remains genuinely new.",
+            "Generate multiple candidate methods in method/candidate_methods.json. For each candidate record hypothesis, mechanism, expected win, implementation cost, required data, strongest prior-work overlap, falsifying ablation, and smoke-test feasibility.",
+            "Run a critic pass in method/idea_critic.md as a skeptical top-conference reviewer. Reject candidates that are only parameter tuning, a shallow combination of existing modules, or lack a falsifying experiment.",
+            "Write method/novelty_risk.json with numeric novelty_risk_score, reasons, overlap types, missing evidence, required repairs, and a pass_to_smoke boolean. If risk is high or pass_to_smoke is false, set reports/method_design.json status to needs_more_work and route repeat or jump_back instead of advancing.",
             "Break the innovation into atomic academic definitions; for each record math, paper trace, code trace, implementation hook, and falsifying ablation.",
             "Write a concrete implementation plan covering data processing, model, training, testing, commands, expected outputs, and low-budget smoke settings.",
             "Do not directly import reference repositories into the final method; adapt the ideas into self-contained code with attribution notes.",
@@ -658,6 +672,36 @@ def missing_required(root: Path, phase: Phase) -> list[str]:
     return [rel for rel in phase.required if not rel_exists_nonempty(root, rel)]
 
 
+def novelty_risk_problems(root: Path) -> list[str]:
+    path = root / "method" / "novelty_risk.json"
+    data = read_json(path)
+    if not isinstance(data, dict):
+        return ["method/novelty_risk.json is not valid JSON"]
+    problems: list[str] = []
+    pass_to_smoke = data.get("pass_to_smoke")
+    if pass_to_smoke is not True:
+        problems.append("method/novelty_risk.json pass_to_smoke is not true")
+    score = data.get("novelty_risk_score")
+    if not isinstance(score, (int, float)):
+        problems.append("method/novelty_risk.json novelty_risk_score is missing or non-numeric")
+    elif float(score) > 0.5:
+        problems.append(f"method/novelty_risk.json novelty_risk_score {score} exceeds 0.5")
+    risk_level = str(data.get("risk_level") or "").strip().lower()
+    if risk_level in {"high", "critical", "blocker"}:
+        problems.append(f"method/novelty_risk.json risk_level is {risk_level!r}")
+    overlap_types = {str(item).strip().lower() for item in data.get("overlap_types", []) if str(item).strip()}
+    blocking_overlaps = {
+        "parameter_tuning",
+        "shallow_combination",
+        "missing_falsifying_experiment",
+        "no_falsifying_ablation",
+    }
+    found = sorted(overlap_types & blocking_overlaps)
+    if found:
+        problems.append(f"method/novelty_risk.json blocking overlap types: {', '.join(found)}")
+    return problems
+
+
 def can_advance(root: Path, phase: Phase) -> tuple[bool, list[str], str | None]:
     missing = missing_required(root, phase)
     status = report_status(root, phase)
@@ -667,6 +711,10 @@ def can_advance(root: Path, phase: Phase) -> tuple[bool, list[str], str | None]:
         return False, [f"reports/{phase.key}.json: missing status"], status
     normalized = status.strip().lower()
     if normalized in COMPLETE_STATUSES:
+        if phase.key == "method_design":
+            problems = novelty_risk_problems(root)
+            if problems:
+                return False, problems, status
         return True, [], status
     if normalized in NON_ADVANCING_STATUSES:
         return False, [f"reports/{phase.key}.json status is {status!r}"], status
@@ -1024,6 +1072,7 @@ Operating rules:
 - Treat .research/interventions/patches.jsonl as structured human patches. Apply pending patches to scope, workflow, memory, or stop conditions as appropriate, then mark the patch status in that file.
 - Honor .research/control/stop_conditions.json. If stop conditions say to pause, write a blocked progress event and do not invent workarounds.
 - Run the active phase's lightweight reviewer gate from .research/workflow_state.json before declaring status complete. Record the reviewer finding under report.self_check.review_gate.
+- In method_design, treat method/novelty_risk.json as a hard gate. If pass_to_smoke is false, novelty_risk_score exceeds 0.5, the idea is mainly parameter tuning, a shallow combination, or lacks a falsifying ablation, set reports/method_design.json to needs_more_work and route repeat or jump_back instead of advancing.
 - Before relying on an external research tool, check whether it is available with ./paperfactory doctor, command -v, or a small import test. Prefer installed tools; do not block the phase only because an optional tool is missing.
 - The base PaperFactory workflow is fixed. Treat user-inserted custom phases as extra checkpoints, not as permission to weaken required evidence gates.
 - Append concise audit entries to .research/logs/research.log with action, rationale, outcome, blocker if any, and next step.
@@ -1234,6 +1283,10 @@ def command_validate(args: argparse.Namespace) -> int:
         if status in COMPLETE_STATUSES and not isinstance(report.get("self_check"), dict):
             print(f"WARN: report {phase.key} is complete but missing self_check")
             warnings += 1
+        if phase.key == "method_design" and status in COMPLETE_STATUSES:
+            for problem in novelty_risk_problems(root):
+                print(f"ERROR: method_design novelty gate failed: {problem}")
+                errors += 1
 
     for rel in (
         "workflow_state.json",

@@ -174,10 +174,10 @@ The base workflow is locked. Users can insert custom phases, but they cannot del
 | # | Phase | Purpose | Required Report |
 | --- | --- | --- | --- |
 | 1 | `scope` | Define target problem, exclusions, venue/domain, datasets, metrics, compute, risks, success criteria. | `reports/scope.json` |
-| 2 | `survey` | Search primary sources, inspect recent papers/repos, build baseline matrix and novelty gap. | `reports/survey.json` |
+| 2 | `survey` | Search primary sources, score paper priority, extract claims, inspect recent papers/repos, build code interface map, baseline matrix, and novelty gap. | `reports/survey.json` |
 | 3 | `data_sanity` | Verify dataset, splits, labels, leakage risk, metrics, protocol. | `reports/data_sanity.json` |
 | 4 | `cheap_baselines` | Run simple strong baselines before method work. | `reports/cheap_baselines.json` |
-| 5 | `method_design` | Design the method from the gap, atomic concepts, ablations, and implementation plan. | `reports/method_design.json` |
+| 5 | `method_design` | Design the method from nearest-prior diff, candidate generation, critic review, novelty risk gate, atomic concepts, ablations, and implementation plan. | `reports/method_design.json` |
 | 6 | `method_smoke` | Run the smallest self-contained method path and compare with cheap baselines. | `reports/method_smoke.json` |
 | 7 | `advanced_comparison` | Compare fairly against strong baselines, released checkpoints, or justified reproductions. | `reports/advanced_comparison.json` |
 | 8 | `paper_evidence` | Assemble results, ablations, failure cases, analysis, figures, Draw.io bundles. | `reports/paper_evidence.json` |
@@ -526,10 +526,10 @@ Web UI 会直接展示运行时层：当前状态机节点、下一条队列任�
 | # | 阶段 | 目的 | 阶段报告 |
 | --- | --- | --- | --- |
 | 1 | `scope` | 明确问题、排除范围、领域/会议、数据集、指标、算力、风险和成功标准。 | `reports/scope.json` |
-| 2 | `survey` | 查 primary sources，检查近期论文/代码，建立 baseline matrix 和 novelty gap。 | `reports/survey.json` |
+| 2 | `survey` | 查 primary sources，做论文优先级评分、claim extraction、代码接口图、baseline matrix 和 novelty gap。 | `reports/survey.json` |
 | 3 | `data_sanity` | 检查数据、切分、标签、泄漏风险、指标协议。 | `reports/data_sanity.json` |
 | 4 | `cheap_baselines` | 在做方法前先跑便宜但强的基线。 | `reports/cheap_baselines.json` |
-| 5 | `method_design` | 基于 gap 设计方法、原子概念、消融和实现计划。 | `reports/method_design.json` |
+| 5 | `method_design` | 基于 nearest-prior diff、候选方法生成、critic 审查、novelty risk gate、原子概念、消融和实现计划设计方法。 | `reports/method_design.json` |
 | 6 | `method_smoke` | 跑最小自包含方法路径，并和 cheap baseline 比较。 | `reports/method_smoke.json` |
 | 7 | `advanced_comparison` | 和强基线、官方 checkpoint 或合理复现做公平比较。 | `reports/advanced_comparison.json` |
 | 8 | `paper_evidence` | 整理结果、消融、失败案例、分析、科研图和 Draw.io bundle。 | `reports/paper_evidence.json` |
