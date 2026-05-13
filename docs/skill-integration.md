@@ -42,6 +42,8 @@ The scan found 500+ `SKILL.md` files. Most were unrelated to academic writing (f
 - `scripts/manuscript_check.py`: lightweight manuscript hygiene checks.
 - `scripts/make_metric_plot.py`: simple metric plotting with paper-style exports.
 - `paperfactory doctor`: checks whether the external `latex-paper-skills` bundle and its `_shared` runtime helpers are installed.
+- `paperfactory doctor`: also reports optional open research tools for literature APIs, PDF extraction, LaTeX builds, experiment tracking, workflow orchestration, and artifact versioning.
+- `docs/open-research-tooling.md`: maps open-source research tools to PaperFactory phases and defines fallback rules when optional tools are unavailable.
 - `drawio-academic-skills`: installed as an external sibling skill; PaperFactory checks for its CLI and asks Codex to preserve editable diagram bundles.
 
 ## Maintenance Rule

@@ -725,6 +725,7 @@ def shell_quote(path: Path) -> str:
 def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
     phase = current_phase(state, root)
     controller = Path(__file__).resolve()
+    tools_doc = controller.parents[1] / "docs" / "open-research-tooling.md"
     if phase is None:
         return (
             "The autonomous research project is marked complete. Read .research/reviews/internal_review.md "
@@ -775,6 +776,54 @@ def build_next_prompt(root: Path, state: dict[str, Any]) -> str:
         "\nCompanion skills to apply this phase:\n" + "\n".join(f"- {skill}" for skill in companion_skills)
         if companion_skills
         else ""
+    )
+    open_tool_guidance_by_phase = {
+        "survey": (
+            "Use OpenAlex, Crossref, arXiv, and Semantic Scholar APIs when useful for source discovery, DOI/arXiv metadata, citation trails, and related-work expansion.",
+            "Cache raw API responses under .research/literature/api_cache/ and cite the exact query, date, and source.",
+            "For PDFs, prefer GROBID for structured TEI extraction when available; otherwise use pdftotext or Python PDF packages and record the extraction method.",
+        ),
+        "data_sanity": (
+            "Use DVC or git-lfs for large data/model artifacts when available; otherwise write a manifest with checksums, source URLs, and access constraints.",
+            "Use Hydra/OmegaConf-style config files or a small equivalent config format so dataset, split, and metric choices are reproducible.",
+        ),
+        "cheap_baselines": (
+            "Track baseline parameters, commands, metrics, and output artifacts with MLflow when available, or save the same fields in JSON/CSV under .research/experiments/.",
+            "Prefer Makefile or Snakemake targets for rerunnable baseline commands when the experiment has more than one step.",
+        ),
+        "method_smoke": (
+            "Use MLflow for smoke-run parameters, metrics, checkpoints, and notes when available.",
+            "Use Hydra/OmegaConf-style configs and a Makefile or Snakemake target for the smallest rerunnable method path.",
+        ),
+        "advanced_comparison": (
+            "Use MLflow to compare runs and checkpoint metadata when available; keep released-checkpoint provenance and evaluation commands explicit.",
+            "Use DVC/git-lfs or checksummed manifests for large checkpoints and result artifacts.",
+            "Use Snakemake or Makefile targets for multi-step fair-comparison pipelines.",
+        ),
+        "paper_evidence": (
+            "Use the local plotting helper plus scientific-figure/drawio skills for figures; preserve raw figure source data and exact plotting commands.",
+            "Keep every table and figure backed by a source JSON/CSV/Markdown manifest so claims are traceable.",
+        ),
+        "paper_drafting": (
+            "Compile with latexmk, pdflatex, biber, bibtex, tectonic, or pandoc when available; save build commands and failure logs in paper/latex_qa.md.",
+            "Use Crossref/arXiv/OpenAlex metadata checks for uncertain bibliography entries rather than inventing fields.",
+        ),
+        "internal_review": (
+            "Re-run available LaTeX/BibTeX build tools and citation metadata checks before final review.",
+            "Audit whether experiment tracking, data versioning, and workflow commands are sufficient for another researcher to reproduce the claims.",
+        ),
+    }
+    open_tool_guidance = open_tool_guidance_by_phase.get(
+        phase.key,
+        (
+            "Use available open-source research tools when they improve evidence quality, reproducibility, or paper build reliability.",
+            "If a recommended tool is unavailable, record the fallback and why it is sufficient for this phase.",
+        ),
+    )
+    open_tool_text = (
+        "\nOpen-source research tooling to prefer when available:\n"
+        f"- Tooling guide: {tools_doc}\n"
+        + "\n".join(f"- {item}" for item in open_tool_guidance)
     )
     custom_phase_text = ""
     if phase.kind == "custom":
@@ -853,12 +902,14 @@ User-visible progress feed:
 Phase focus:
 {focus_list}
 {companion_text}
+{open_tool_text}
 {custom_phase_text}
 {intervention_section}
 
 Operating rules:
 - Before acting, read the selected memory sources:
 {memory_list}
+- Before relying on an external research tool, check whether it is available with ./paperfactory doctor, command -v, or a small import test. Prefer installed tools; do not block the phase only because an optional tool is missing.
 - The base PaperFactory workflow is fixed. Treat user-inserted custom phases as extra checkpoints, not as permission to weaken required evidence gates.
 - Append concise audit entries to .research/logs/research.log with action, rationale, outcome, blocker if any, and next step.
 - Use primary sources for papers, repositories, datasets, benchmarks, and model cards. Verify recent or unstable facts before relying on them.

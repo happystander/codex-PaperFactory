@@ -54,6 +54,7 @@ flowchart LR
 | LaTeX toolchain | Optional | Compile generated LaTeX papers. | `latexmk --version` or equivalent |
 | External writing skills | Recommended | `paper-from-zero`, empirical/review writers, result backfill, rhythm refinement. | `./paperfactory doctor` |
 | Draw.io skill | Recommended | Editable `.drawio + .spec.yaml + .arch.json + .svg` figure bundles. | `./paperfactory doctor` |
+| Open research tools | Recommended | Literature APIs, PDF extraction, experiment tracking, workflow replay, data/model versioning. | `./paperfactory doctor` and [`docs/open-research-tooling.md`](docs/open-research-tooling.md) |
 
 Run the dependency check after cloning:
 
@@ -61,7 +62,7 @@ Run the dependency check after cloning:
 ./paperfactory doctor
 ```
 
-`doctor` treats core failures as errors and optional skill/tool gaps as warnings. Core research still works without optional plotting, LaTeX, or Draw.io support, but paper production is stronger when those are available.
+`doctor` treats core failures as errors and optional skill/tool gaps as warnings. Core research still works without optional plotting, LaTeX, Draw.io, PDF parsing, or experiment-tracking tools, but research quality and reproducibility are stronger when those are available.
 
 ### Install
 
@@ -303,6 +304,7 @@ paperfactory web --open
 | [`docs/ai-researcher-adaptation.md`](docs/ai-researcher-adaptation.md) | AI-Researcher-inspired workflow adaptation. |
 | [`docs/latex-paper-skills-adaptation.md`](docs/latex-paper-skills-adaptation.md) | LaTeX writing skill integration. |
 | [`docs/drawio-figure-integration.md`](docs/drawio-figure-integration.md) | Draw.io figure bundle integration. |
+| [`docs/open-research-tooling.md`](docs/open-research-tooling.md) | Optional open-source research tools for discovery, PDF parsing, experiments, workflows, and paper builds. |
 
 ### Safety Rules
 
@@ -378,6 +380,7 @@ flowchart LR
 | LaTeX 工具链 | 可选 | 编译生成的 LaTeX 论文。 | `latexmk --version` 或等价工具 |
 | 外部写作 skills | 推荐 | 综述/实证论文写作、结果回填、文本节奏润色。 | `./paperfactory doctor` |
 | Draw.io skill | 推荐 | 生成 `.drawio + .spec.yaml + .arch.json + .svg` 可编辑图表 bundle。 | `./paperfactory doctor` |
+| 开源科研工具 | 推荐 | 文献 API、PDF 解析、实验追踪、工作流复现、数据/模型版本管理。 | `./paperfactory doctor` 和 [`docs/open-research-tooling.md`](docs/open-research-tooling.md) |
 
 克隆后先运行：
 
@@ -385,7 +388,7 @@ flowchart LR
 ./paperfactory doctor
 ```
 
-`doctor` 会检查核心依赖和可选能力。缺少可选绘图、LaTeX 或 Draw.io 时，核心研究流程仍可运行，但论文生产能力会变弱。
+`doctor` 会检查核心依赖和可选能力。缺少可选绘图、LaTeX、Draw.io、PDF 解析或实验追踪工具时，核心研究流程仍可运行，但研究质量和可复现性会变弱。
 
 ### 安装
 
@@ -627,6 +630,7 @@ paperfactory web --open
 | [`docs/ai-researcher-adaptation.md`](docs/ai-researcher-adaptation.md) | AI-Researcher 工作流吸收说明。 |
 | [`docs/latex-paper-skills-adaptation.md`](docs/latex-paper-skills-adaptation.md) | LaTeX 写作 skills 集成。 |
 | [`docs/drawio-figure-integration.md`](docs/drawio-figure-integration.md) | Draw.io 图表 bundle 集成。 |
+| [`docs/open-research-tooling.md`](docs/open-research-tooling.md) | 文献发现、PDF 解析、实验追踪、工作流复现和论文构建的可选开源科研工具。 |
 
 ### 安全规则
 

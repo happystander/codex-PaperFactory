@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import importlib.util
 import json
 import os
 import shutil
@@ -547,6 +548,39 @@ def command_web(args: argparse.Namespace) -> int:
     return subprocess.call(cmd)
 
 
+def append_binary_check(
+    checks: list[tuple[str, str, str]],
+    label: str,
+    binary: str,
+    purpose: str,
+    *,
+    required: bool = False,
+) -> None:
+    found = shutil.which(binary)
+    if found:
+        checks.append((label, "OK", found))
+    else:
+        status = "ERROR" if required else "WARN"
+        checks.append((label, status, f"optional; install `{binary}` for {purpose}"))
+
+
+def append_python_package_check(
+    checks: list[tuple[str, str, str]],
+    label: str,
+    module: str,
+    purpose: str,
+    *,
+    package: str | None = None,
+    required: bool = False,
+) -> None:
+    if importlib.util.find_spec(module):
+        checks.append((label, "OK", f"Python module `{module}` available"))
+    else:
+        status = "ERROR" if required else "WARN"
+        install_name = package or module
+        checks.append((label, status, f"optional; `pip install {install_name}` for {purpose}"))
+
+
 def command_doctor(args: argparse.Namespace) -> int:
     del args
     checks: list[tuple[str, str, str]] = []
@@ -621,8 +655,41 @@ def command_doctor(args: argparse.Namespace) -> int:
         )
     )
 
+    research_binaries = (
+        ("tool:paper:pandoc", "pandoc", "Markdown/LaTeX/DOCX conversion"),
+        ("tool:paper:latexmk", "latexmk", "repeatable LaTeX builds"),
+        ("tool:paper:pdflatex", "pdflatex", "fallback PDF compilation"),
+        ("tool:paper:tectonic", "tectonic", "self-contained LaTeX builds"),
+        ("tool:paper:biber", "biber", "BibLaTeX bibliography builds"),
+        ("tool:paper:bibtex", "bibtex", "BibTeX bibliography builds"),
+        ("tool:pdf:pdftotext", "pdftotext", "fast local PDF text extraction"),
+        ("tool:pdf:grobid", "grobid_client", "structured scholarly PDF extraction"),
+        ("tool:pdf:java", "java", "running GROBID or Java PDF tooling"),
+        ("tool:lit:jq", "jq", "metadata API response inspection"),
+        ("tool:lit:curl", "curl", "OpenAlex/Crossref/arXiv/Semantic Scholar API queries"),
+        ("tool:lit:wget", "wget", "paper and dataset downloads"),
+        ("tool:repro:dvc", "dvc", "data/model artifact versioning"),
+        ("tool:repro:git-lfs", "git-lfs", "large artifact pointers in Git"),
+        ("tool:track:mlflow", "mlflow", "experiment tracking UI and run metadata"),
+        ("tool:flow:snakemake", "snakemake", "reproducible experiment workflows"),
+    )
+    for label, binary, purpose in research_binaries:
+        append_binary_check(checks, label, binary, purpose)
+
+    research_packages = (
+        ("pkg:lit:arxiv", "arxiv", "arXiv API search helpers", "arxiv"),
+        ("pkg:lit:habanero", "habanero", "Crossref API helpers", "habanero"),
+        ("pkg:lit:semantic", "semanticscholar", "Semantic Scholar API helpers", "semanticscholar"),
+        ("pkg:pdf:pypdf", "pypdf", "fallback PDF metadata/text extraction", "pypdf"),
+        ("pkg:pdf:pdfminer", "pdfminer", "fallback PDF layout/text extraction", "pdfminer.six"),
+        ("pkg:config:hydra", "hydra", "composable experiment configuration", "hydra-core"),
+        ("pkg:config:omegaconf", "omegaconf", "typed experiment configuration", "omegaconf"),
+    )
+    for label, module, purpose, package in research_packages:
+        append_python_package_check(checks, label, module, purpose, package=package)
+
     for name, status, detail in checks:
-        print(f"{status:5} {name:16} {detail}")
+        print(f"{status:5} {name:22} {detail}")
     return 1 if any(status == "ERROR" for _, status, _ in checks) else 0
 
 

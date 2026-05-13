@@ -29,7 +29,7 @@
 /path/to/codex-PaperFactory/paperfactory doctor
 ```
 
-更多 launcher 和 dashboard 细节见 `docs/local-ui.md`。
+`doctor` 现在不仅检查 skill，也会检查文献 API 辅助包、PDF 解析、LaTeX 构建、实验追踪、工作流复现和数据/模型版本管理工具。完整建议见 `docs/open-research-tooling.md`。更多 launcher 和 dashboard 细节见 `docs/local-ui.md`。
 
 ## 交互式 Web UI
 
@@ -157,6 +157,22 @@ codex exec --full-auto --skip-git-repo-check "<phase prompt>"
 /path/to/codex-PaperFactory/paperfactory check -- paper/paper_draft.md --format markdown
 /path/to/codex-PaperFactory/paperfactory check -- main.tex --format latex
 ```
+
+## 开源科研工具
+
+当前 skill 已经覆盖论文生产流程，但长期自动研究还需要工具层增强：
+
+| 工具层 | 推荐工具 | 用途 |
+| --- | --- | --- |
+| 文献发现 | arXiv API、OpenAlex、Crossref、Semantic Scholar | 检索论文、扩展相关工作、补全 DOI/arXiv/venue/year 元数据。 |
+| PDF 解析 | GROBID、pdftotext、pypdf、pdfminer.six | 抽取论文正文、章节、参考文献和结构化元数据。 |
+| 实验追踪 | MLflow | 保存参数、指标、artifact，用 UI 对比实验。 |
+| 数据版本 | DVC、git-lfs | 管理数据集、checkpoint、模型权重和大文件。 |
+| 工作流复现 | Snakemake、Makefile | 把多步实验变成可重跑目标。 |
+| 配置管理 | Hydra、OmegaConf | 避免实验脚本硬编码参数。 |
+| 论文构建 | latexmk、pdflatex、bibtex、biber、Pandoc、Tectonic | 编译论文、检查引用、保留构建日志。 |
+
+缺少这些工具不会阻塞核心流程；Codex 会在阶段报告里记录 fallback。但如果目标是高质量论文和可复现实验，建议至少补齐文献 API、PDF 解析、MLflow、DVC/Snakemake 和 LaTeX 构建工具。
 
 ## 关键原则
 
